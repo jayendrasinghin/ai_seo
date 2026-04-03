@@ -1,0 +1,150 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict DsjbDeovRXuh06Hk3iNb1aZWXNSfhaSwlFV2BTPL7p5sfBpEZQbRpmKCZDErrN0
+
+-- Dumped from database version 15.14 (Debian 15.14-0+deb12u1)
+-- Dumped by pg_dump version 15.14 (Debian 15.14-0+deb12u1)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: Session; Type: TABLE; Schema: public; Owner: ai_product_descuser
+--
+
+CREATE TABLE public."Session" (
+    id text NOT NULL,
+    shop text NOT NULL,
+    state text NOT NULL,
+    "isOnline" boolean DEFAULT false NOT NULL,
+    scope text,
+    expires timestamp(3) without time zone,
+    "accessToken" text NOT NULL,
+    "userId" bigint,
+    "firstName" text,
+    "lastName" text,
+    email text,
+    "accountOwner" boolean DEFAULT false NOT NULL,
+    locale text,
+    collaborator boolean DEFAULT false,
+    "emailVerified" boolean DEFAULT false,
+    "refreshToken" text,
+    "refreshTokenExpires" timestamp(3) without time zone
+);
+
+
+ALTER TABLE public."Session" OWNER TO ai_product_descuser;
+
+--
+-- Name: StoreUsage; Type: TABLE; Schema: public; Owner: ai_product_descuser
+--
+
+CREATE TABLE public."StoreUsage" (
+    id text NOT NULL,
+    shop text NOT NULL,
+    "usedCredits" integer DEFAULT 0 NOT NULL,
+    plan text DEFAULT 'free'::text NOT NULL,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE public."StoreUsage" OWNER TO ai_product_descuser;
+
+--
+-- Name: _prisma_migrations; Type: TABLE; Schema: public; Owner: ai_product_descuser
+--
+
+CREATE TABLE public._prisma_migrations (
+    id character varying(36) NOT NULL,
+    checksum character varying(64) NOT NULL,
+    finished_at timestamp with time zone,
+    migration_name character varying(255) NOT NULL,
+    logs text,
+    rolled_back_at timestamp with time zone,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_steps_count integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public._prisma_migrations OWNER TO ai_product_descuser;
+
+--
+-- Data for Name: Session; Type: TABLE DATA; Schema: public; Owner: ai_product_descuser
+--
+
+COPY public."Session" (id, shop, state, "isOnline", scope, expires, "accessToken", "userId", "firstName", "lastName", email, "accountOwner", locale, collaborator, "emailVerified", "refreshToken", "refreshTokenExpires") FROM stdin;
+offline_mycyberstores.myshopify.com	mycyberstores.myshopify.com		f	write_products	2026-03-23 12:03:22.586	shpua_60efa91d7f72fa2f67de16f0fa5e47e4	\N	\N	\N	\N	f	\N	f	f	shprt_38d99ff7a4aec9bfddac46a5c2e0a9f7	2026-06-21 11:03:22.586
+\.
+
+
+--
+-- Data for Name: StoreUsage; Type: TABLE DATA; Schema: public; Owner: ai_product_descuser
+--
+
+COPY public."StoreUsage" (id, shop, "usedCredits", plan, "createdAt", "updatedAt") FROM stdin;
+cmmszt7ny0000ngosgmt88gsp	mycyberstores.myshopify.com	2	free	2026-03-16 09:40:23.951	2026-03-16 09:40:51.949
+\.
+
+
+--
+-- Data for Name: _prisma_migrations; Type: TABLE DATA; Schema: public; Owner: ai_product_descuser
+--
+
+COPY public._prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) FROM stdin;
+24a8694d-602a-4715-b779-45128190b642	8e716640c3dd9c82706f398d323a80662488fb19dba7ee893115664fc1fce569	2026-03-16 14:26:58.551613+05:30	20260316085658_init_postgres	\N	\N	2026-03-16 14:26:58.516803+05:30	1
+3e4da1db-656d-4a0a-8b6a-9f08f8659123	85b55bf3f1ece0bc8f5da3758c96a1a5c215666a5c4d8235cad6ea6a1f78eec5	2026-03-16 14:30:42.467419+05:30	20260316090042_add_store_usage	\N	\N	2026-03-16 14:30:42.43687+05:30	1
+\.
+
+
+--
+-- Name: Session Session_pkey; Type: CONSTRAINT; Schema: public; Owner: ai_product_descuser
+--
+
+ALTER TABLE ONLY public."Session"
+    ADD CONSTRAINT "Session_pkey" PRIMARY KEY (id);
+
+
+--
+-- Name: StoreUsage StoreUsage_pkey; Type: CONSTRAINT; Schema: public; Owner: ai_product_descuser
+--
+
+ALTER TABLE ONLY public."StoreUsage"
+    ADD CONSTRAINT "StoreUsage_pkey" PRIMARY KEY (id);
+
+
+--
+-- Name: _prisma_migrations _prisma_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: ai_product_descuser
+--
+
+ALTER TABLE ONLY public._prisma_migrations
+    ADD CONSTRAINT _prisma_migrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: StoreUsage_shop_key; Type: INDEX; Schema: public; Owner: ai_product_descuser
+--
+
+CREATE UNIQUE INDEX "StoreUsage_shop_key" ON public."StoreUsage" USING btree (shop);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict DsjbDeovRXuh06Hk3iNb1aZWXNSfhaSwlFV2BTPL7p5sfBpEZQbRpmKCZDErrN0
+

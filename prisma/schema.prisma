@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+
+
+model StoreUsage {
+  id            String   @id @default(cuid())
+  shop          String   @unique
+  usedCredits   Int      @default(0)
+  aiSeoUsed     Int      @default(0)
+  aiImageUsed   Int      @default(0)
+  freeQuotaLimit Int     @default(100)
+  plan          String   @default("free")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// One store-wide image SEO scan (paginate products in Day 3+).
+model ImageScanRun {
+  id              String   @id @default(cuid())
+  shop            String
+  /// pending | running | completed | failed
+  status          String   @default("pending")
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  productsScanned Int      @default(0)
+  imagesScanned   Int      @default(0)
+  issuesOpen      Int      @default(0)
+  errorMessage    String?
+
+  issues ImageSeoIssue[]
+
+  @@index([shop, startedAt(sort: Desc)])
+}
+
+/// Single image issue row from a scan (MISSING_ALT, SHORT_ALT, DUPLICATE_ALT).
+model ImageSeoIssue {
+  id           String       @id @default(cuid())
+  shop         String
+  scanRunId    String
+  scanRun      ImageScanRun @relation(fields: [scanRunId], references: [id], onDelete: Cascade)
+
+  productId    String
+  productTitle String?
+  /// Shopify MediaImage id (GID)
+  mediaId      String
+  imageUrl     String?
+  currentAlt   String?
+  suggestedAlt String?
+  suggestionUpdatedAt DateTime?
+  /// MISSING_ALT | SHORT_ALT | DUPLICATE_ALT
+  issueType    String
+
+  createdAt    DateTime @default(now())
+
+  @@index([shop, scanRunId])
+  @@index([shop, issueType])
+  @@index([shop, productId])
+}
+
+/// Merchant support / contact form submissions (one row per message).
+model SupportMessage {
+  id            String   @id @default(cuid())
+  shop          String
+  /// Optional reply-to (merchant may leave blank).
+  contactEmail  String?
+  /// Optional WhatsApp number (international format, e.g. +91…).
+  whatsapp      String?
+  subject       String?
+  message       String
+  /// App owner reply (set via /app/support-inbox); visible to the merchant on Help & support.
+  reply         String?
+  replyAt       DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([shop, createdAt(sort: Desc)])
+}

@@ -1,0 +1,54 @@
+ssh root@64.227.159.135 -i ~/webkey
+ssh root@159.223.197.194 -i ~/webkey
+
+
+ai_product_descuser
+myaiprod2023
+ai_product_desc
+
+
+OPENAI_API_KEY=""
+
+
+
+
+jayendra.singh.in@gmail.com
+
+https://platform.openai.com/welcome?step=try
+
+API key name
+shopify-ai-seo-image-prod
+
+
+Project name
+ai-product-descriptions-seo
+
+
+
+Final pricing plan
+Always free (manual)
+Manual SEO update
+Manual image upload/update
+Free AI trial (SEO only)
+First 100 AI SEO generations per store are free
+AI image is not part of free trial
+Paid AI SEO plan
+$9/month
+Unlocks AI SEO after free 100 are used
+Paid AI image plan
+$25/month
+Includes up to 40 AI images/month
+Extra AI image usage
+Top-up packs (recommended), e.g. $10 for +20 images
+Access logic
+Free store:
+Manual tools: allowed
+AI SEO: allowed until 100 uses
+AI image: blocked
+SEO paid ($9):
+AI SEO: allowed
+AI image: blocked (unless image plan/add-on active)
+Image paid ($25):
+AI image: allowed up to quota
+top-up available beyond quota
+This is a solid, cost-safe model for launch.

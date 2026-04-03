@@ -1,0 +1,1749 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type {
+  ActionFunctionArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
+import { AiSpinner } from "../AiSpinner";
+import { EmbeddedNavLink } from "../embedded-nav-link";
+import { productGidFromRouteParam, productPathSegmentFromGid } from "../shopify-ids";
+import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+import { generateProductCopy, generateProductImage } from "../ai.server";
+import {
+  AI_IMAGE_MONTHLY_INCLUDED,
+  AI_IMAGE_PLAN_LABEL,
+} from "../pricing";
+import prisma from "../db.server";
+
+type LoaderProduct = {
+  id: string;
+  title: string;
+  status: string;
+  /** Sum of available across variants and locations. */
+  availableStockSum: number;
+  descriptionHtml: string | null;
+  images: {
+    nodes: Array<{
+      id: string;
+      url: string;
+      altText: string | null;
+    }>;
+  } | null;
+  seo: {
+    title: string | null;
+    description: string | null;
+  } | null;
+};
+
+type ProductFromQuery = {
+  id: string;
+  title: string;
+  status: string;
+  descriptionHtml: string | null;
+  images: LoaderProduct["images"];
+  seo: LoaderProduct["seo"];
+  variants?: {
+    nodes?: Array<{
+      inventoryItem?: {
+        inventoryLevels?: {
+          nodes?: Array<{
+            quantities?: Array<{ name?: string; quantity?: number }>;
+          }>;
+        };
+      };
+    }>;
+  };
+};
+
+function sumAvailableStock(product: ProductFromQuery): number {
+  let sum = 0;
+  for (const v of product.variants?.nodes ?? []) {
+    for (const lvl of v.inventoryItem?.inventoryLevels?.nodes ?? []) {
+      for (const q of lvl.quantities ?? []) {
+        if (q.name === "available" && typeof q.quantity === "number") {
+          sum += q.quantity;
+        }
+      }
+    }
+  }
+  return sum;
+}
+
+type OtherProductRow = {
+  id: string;
+  title: string;
+  status: string;
+  featuredImage: { url: string; altText: string | null } | null;
+  images: { nodes: Array<{ url: string; altText: string | null }> } | null;
+  media: {
+    nodes: Array<{
+      image?: { url: string; altText: string | null } | null;
+    }>;
+  } | null;
+  seo: { title: string | null; description: string | null } | null;
+};
+
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+
+  const rawId = params.id;
+  const decodedId = productGidFromRouteParam(rawId);
+
+  const usageRow = await prisma.storeUsage.upsert({
+    where: { shop: session.shop },
+    update: {},
+    create: { shop: session.shop },
+  });
+  const usagePayload = {
+    aiUsed: usageRow.aiSeoUsed + usageRow.aiImageUsed,
+    freeQuotaLimit: usageRow.freeQuotaLimit,
+    plan: usageRow.plan,
+    aiImageUsed: usageRow.aiImageUsed,
+    aiImageMonthlyLimit: AI_IMAGE_MONTHLY_INCLUDED,
+  };
+
+  if (!decodedId) {
+    return {
+      product: null,
+      otherProducts: [] as OtherProductRow[],
+      shopifyError: null as string | null,
+      usage: usagePayload,
+    };
+  }
+
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      query AiSeoAppProductWithList($id: ID!) {
+        product(id: $id) {
+          id
+          title
+          status
+          descriptionHtml
+          images(first: 50) {
+            nodes {
+              id
+              url
+              altText
+            }
+          }
+          variants(first: 50) {
+            nodes {
+              inventoryItem {
+                inventoryLevels(first: 25) {
+                  nodes {
+                    quantities(names: ["available"]) {
+                      name
+                      quantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+          seo {
+            title
+            description
+          }
+        }
+        products(first: 20) {
+          nodes {
+            id
+            title
+            status
+            featuredImage {
+              url
+              altText
+            }
+            images(first: 1) {
+              nodes {
+                url
+                altText
+              }
+            }
+            media(first: 5) {
+              nodes {
+                ... on MediaImage {
+                  image {
+                    url
+                    altText
+                  }
+                }
+              }
+            }
+            seo {
+              title
+              description
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          id: decodedId,
+        },
+      },
+    );
+
+    const json = await response.json();
+    const rawProduct = json.data?.product as ProductFromQuery | null | undefined;
+    const product: LoaderProduct | null = rawProduct
+      ? {
+          id: rawProduct.id,
+          title: rawProduct.title,
+          status: rawProduct.status,
+          availableStockSum: sumAvailableStock(rawProduct),
+          descriptionHtml: rawProduct.descriptionHtml,
+          images: rawProduct.images,
+          seo: rawProduct.seo,
+        }
+      : null;
+    const otherProducts = (json.data?.products?.nodes ??
+      []) as OtherProductRow[];
+
+    return {
+      product,
+      otherProducts,
+      usage: usagePayload,
+      shopifyError: null as string | null,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not reach Shopify.";
+    return {
+      product: null,
+      otherProducts: [] as OtherProductRow[],
+      shopifyError: message.includes("fetch failed")
+        ? "Could not connect to Shopify from this server (network error). On WSL, check internet access, VPN, firewall, and DNS. Retry or run the app from Windows if the problem persists."
+        : message,
+      usage: usagePayload,
+    };
+  }
+};
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "generate") {
+    const { admin, session } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+
+    if (!decodedId) return null;
+
+    const shopDomain = session.shop;
+
+    const usage = await prisma.storeUsage.upsert({
+      where: { shop: shopDomain },
+      update: {},
+      create: { shop: shopDomain },
+    });
+
+    const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
+    if (totalAiUsed >= usage.freeQuotaLimit && usage.plan === "free") {
+      return { status: "quota_exceeded" as const };
+    }
+
+    const response = await admin.graphql(
+      `#graphql
+        query AiSeoAppProductForAi($id: ID!) {
+          product(id: $id) {
+            title
+            descriptionHtml
+          }
+        }`,
+      {
+        variables: {
+          id: decodedId,
+        },
+      },
+    );
+
+    const json = await response.json();
+    const product = json.data?.product;
+
+    if (!product) return null;
+
+    let ai;
+    try {
+      ai = await generateProductCopy({
+        title: product.title,
+        currentDescription: product.descriptionHtml,
+      });
+    } catch (error) {
+      return {
+        status: "error" as const,
+        userErrors: [
+          {
+            message:
+              error instanceof Error
+                ? `AI unavailable: ${error.message}`
+                : "AI is temporarily unavailable. Please try again in a minute.",
+          },
+        ],
+      };
+    }
+
+    await prisma.storeUsage.update({
+      where: { shop: shopDomain },
+      data: {
+        usedCredits: { increment: 1 },
+        aiSeoUsed: { increment: 1 },
+      },
+    });
+
+    return { ai, status: "generated" as const };
+  }
+
+  if (intent === "generate_image" || intent === "generate_image_auto") {
+    const { admin, session } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+
+    if (!decodedId) return null;
+
+    const shopDomain = session.shop;
+
+    const usage = await prisma.storeUsage.upsert({
+      where: { shop: shopDomain },
+      update: {},
+      create: { shop: shopDomain },
+    });
+
+    if (usage.plan !== "image") {
+      return { status: "image_plan_required" as const };
+    }
+
+    if (usage.aiImageUsed >= AI_IMAGE_MONTHLY_INCLUDED) {
+      return { status: "image_quota_exceeded" as const };
+    }
+
+    const productResponse = await admin.graphql(
+      `#graphql
+        query AiSeoAppProductForImage($id: ID!) {
+          product(id: $id) {
+            title
+          }
+        }`,
+      { variables: { id: decodedId } },
+    );
+
+    const productJson = await productResponse.json();
+    const productTitle = productJson.data?.product?.title as string | undefined;
+    if (!productTitle) return null;
+
+    let imageUrl: string;
+    try {
+      ({ imageUrl } = await generateProductImage({ title: productTitle }));
+    } catch (error) {
+      return {
+        status: "ai_image_error" as const,
+        message:
+          error instanceof Error
+            ? `AI image unavailable: ${error.message}`
+            : "AI image generation failed. Try again in a minute.",
+      };
+    }
+
+    if (intent === "generate_image_auto") {
+      const mediaResponse = await admin.graphql(
+        `#graphql
+          mutation AiSeoAddAiProductImage($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+              media {
+                status
+              }
+              mediaUserErrors {
+                field
+                message
+              }
+            }
+          }`,
+        {
+          variables: {
+            productId: decodedId,
+            media: [
+              {
+                originalSource: imageUrl,
+                mediaContentType: "IMAGE",
+                alt: productTitle
+                  ? `AI generated: ${productTitle}`
+                  : "AI generated image",
+              },
+            ],
+          },
+        },
+      );
+
+      const mediaJson = await mediaResponse.json();
+      const mediaErrors = mediaJson.data?.productCreateMedia?.mediaUserErrors ?? [];
+      const mediaStatuses = (
+        mediaJson.data?.productCreateMedia?.media ?? []
+      ).map((m: { status?: string }) => m.status);
+
+      if (mediaErrors.length > 0) {
+        return {
+          status: "ai_image_error" as const,
+          message: mediaErrors[0]?.message || "Could not add AI image to the product.",
+        };
+      }
+
+      await prisma.storeUsage.update({
+        where: { shop: shopDomain },
+        data: {
+          usedCredits: { increment: 1 },
+          aiImageUsed: { increment: 1 },
+        },
+      });
+
+      if (mediaStatuses.includes("PROCESSING")) {
+        return { status: "image_processing" as const, appliedMode: "auto" as const };
+      }
+
+      if (mediaStatuses.includes("FAILED")) {
+        return {
+          status: "ai_image_error" as const,
+          message:
+            "Shopify accepted the request but failed to process this image. Please try again.",
+        };
+      }
+
+      return {
+        status: "image_generated" as const,
+        appliedMode: "auto" as const,
+      };
+    }
+
+    return {
+      status: "image_preview" as const,
+      imageUrl,
+      productTitle,
+    };
+  }
+
+  if (intent === "apply_ai_image") {
+    const { admin, session } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+
+    if (!decodedId) return null;
+
+    const shopDomain = session.shop;
+
+    const usage = await prisma.storeUsage.upsert({
+      where: { shop: shopDomain },
+      update: {},
+      create: { shop: shopDomain },
+    });
+
+    if (usage.plan !== "image") {
+      return { status: "image_plan_required" as const };
+    }
+
+    if (usage.aiImageUsed >= AI_IMAGE_MONTHLY_INCLUDED) {
+      return { status: "image_quota_exceeded" as const };
+    }
+
+    const imageUrl = String(formData.get("imageUrl") || "");
+    const productTitle = String(formData.get("productTitle") || "").slice(0, 512);
+
+    if (!imageUrl) {
+      return {
+        status: "ai_image_error" as const,
+        message: "Missing AI image URL. Please generate a new image.",
+      };
+    }
+
+    const mediaResponse = await admin.graphql(
+      `#graphql
+        mutation AiSeoAddAiProductImage($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              status
+            }
+            mediaUserErrors {
+              field
+              message
+            }
+          }
+        }`,
+      {
+        variables: {
+          productId: decodedId,
+          media: [
+            {
+              originalSource: imageUrl,
+              mediaContentType: "IMAGE",
+              alt: productTitle ? `AI generated: ${productTitle}` : "AI generated image",
+            },
+          ],
+        },
+      },
+    );
+
+    const mediaJson = await mediaResponse.json();
+    const mediaErrors = mediaJson.data?.productCreateMedia?.mediaUserErrors ?? [];
+    const mediaStatuses = (
+      mediaJson.data?.productCreateMedia?.media ?? []
+    ).map((m: { status?: string }) => m.status);
+
+    if (mediaErrors.length > 0) {
+      return {
+        status: "ai_image_error" as const,
+        message: mediaErrors[0]?.message || "Could not add AI image to the product.",
+      };
+    }
+
+    if (mediaStatuses.includes("FAILED")) {
+      return {
+        status: "ai_image_error" as const,
+        message:
+          "Shopify accepted the request but failed to process this image. Please try again.",
+      };
+    }
+
+    await prisma.storeUsage.update({
+      where: { shop: shopDomain },
+      data: {
+        usedCredits: { increment: 1 },
+        aiImageUsed: { increment: 1 },
+      },
+    });
+
+    if (mediaStatuses.includes("PROCESSING")) {
+      return { status: "image_processing" as const, appliedMode: "manual" as const };
+    }
+
+    return {
+      status: "image_generated" as const,
+      appliedMode: "manual" as const,
+    };
+  }
+
+  if (intent === "apply") {
+    const { admin } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+
+    if (!decodedId) return null;
+
+    const descriptionHtml = formData.get("descriptionHtml");
+    const seoTitle = formData.get("seoTitle");
+    const seoDescription = formData.get("seoDescription");
+
+    const response = await admin.graphql(
+      `#graphql
+        mutation AiSeoUpdateProduct(
+          $id: ID!
+          $descriptionHtml: String!
+          $seoTitle: String!
+          $seoDescription: String!
+        ) {
+          productUpdate(
+            input: {
+              id: $id
+              descriptionHtml: $descriptionHtml
+              seo: { title: $seoTitle, description: $seoDescription }
+            }
+          ) {
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+      {
+        variables: {
+          id: decodedId,
+          descriptionHtml,
+          seoTitle,
+          seoDescription,
+        },
+      },
+    );
+
+    const json = await response.json();
+    const userErrors = json.data?.productUpdate?.userErrors ?? [];
+
+    const applySource =
+      formData.get("applySource") === "manual" ? ("manual" as const) : ("ai" as const);
+
+    if (userErrors.length > 0) {
+      return { status: "error" as const, userErrors, applySource };
+    }
+
+    return { status: "applied" as const, applySource };
+  }
+
+  if (intent === "add_images") {
+    const { admin } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+
+    if (!decodedId) return null;
+
+    const imageUrlsRaw = String(formData.get("imageUrls") || "");
+    const imageUrls = imageUrlsRaw
+      .split("\n")
+      .map((url) => url.trim())
+      .filter((url) => /^https?:\/\//.test(url));
+
+    if (imageUrls.length === 0) {
+      return {
+        status: "image_error" as const,
+        message:
+          "Please provide at least one valid image URL (https://...). One URL per line.",
+      };
+    }
+
+    const response = await admin.graphql(
+      `#graphql
+        mutation AiSeoAddProductImages($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              alt
+              mediaContentType
+              status
+            }
+            mediaUserErrors {
+              field
+              message
+            }
+            product {
+              id
+            }
+          }
+        }`,
+      {
+        variables: {
+          productId: decodedId,
+          media: imageUrls.map((url) => ({
+            originalSource: url,
+            mediaContentType: "IMAGE",
+            alt: "Product image",
+          })),
+        },
+      },
+    );
+
+    const json = await response.json();
+    const userErrors = json.data?.productCreateMedia?.mediaUserErrors ?? [];
+
+    if (userErrors.length > 0) {
+      return {
+        status: "image_error" as const,
+        message: userErrors[0]?.message || "Could not add images.",
+      };
+    }
+
+    return {
+      status: "images_added" as const,
+      addedCount: imageUrls.length,
+    };
+  }
+
+  if (intent === "upload_images") {
+    try {
+      const { admin } = await authenticate.admin(request);
+      const decodedId = productGidFromRouteParam(params.id);
+
+      if (!decodedId) return null;
+
+      const files = formData
+        .getAll("images")
+        .filter((value): value is File => value instanceof File && value.size > 0);
+
+      if (files.length === 0) {
+        return {
+          status: "image_error" as const,
+          message: "Please select at least one image file to upload.",
+        };
+      }
+
+      const stagedResponse = await admin.graphql(
+        `#graphql
+          mutation AiSeoStagedUploadsCreate($input: [StagedUploadInput!]!) {
+            stagedUploadsCreate(input: $input) {
+              stagedTargets {
+                url
+                resourceUrl
+                parameters {
+                  name
+                  value
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }`,
+        {
+          variables: {
+            input: files.map((file) => ({
+              filename: file.name,
+              mimeType: file.type || "image/jpeg",
+              resource: "PRODUCT_IMAGE",
+              fileSize: String(file.size),
+              httpMethod: "POST",
+            })),
+          },
+        },
+      );
+
+      const stagedJson = await stagedResponse.json();
+      const stagedErrors = stagedJson.data?.stagedUploadsCreate?.userErrors ?? [];
+      const stagedTargets = stagedJson.data?.stagedUploadsCreate?.stagedTargets ?? [];
+
+      if (stagedErrors.length > 0 || stagedTargets.length !== files.length) {
+        return {
+          status: "image_error" as const,
+          message: stagedErrors[0]?.message || "Could not prepare image uploads.",
+        };
+      }
+
+      const uploadedResourceUrls: string[] = [];
+
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const target = stagedTargets[i];
+        const uploadForm = new FormData();
+
+        for (const param of target.parameters ?? []) {
+          uploadForm.append(param.name, param.value);
+        }
+
+        uploadForm.append("file", file);
+
+        const uploadResponse = await fetch(target.url, {
+          method: "POST",
+          body: uploadForm,
+        });
+
+        if (!uploadResponse.ok) {
+          return {
+            status: "image_error" as const,
+            message: "Failed while uploading one of the selected images.",
+          };
+        }
+
+        uploadedResourceUrls.push(target.resourceUrl);
+      }
+
+      const createMediaResponse = await admin.graphql(
+        `#graphql
+          mutation AiSeoCreateProductMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+              mediaUserErrors {
+                field
+                message
+              }
+            }
+          }`,
+        {
+          variables: {
+            productId: decodedId,
+            media: uploadedResourceUrls.map((resourceUrl) => ({
+              originalSource: resourceUrl,
+              mediaContentType: "IMAGE",
+              alt: "Uploaded product image",
+            })),
+          },
+        },
+      );
+
+      const createMediaJson = await createMediaResponse.json();
+      const createMediaErrors =
+        createMediaJson.data?.productCreateMedia?.mediaUserErrors ?? [];
+
+      if (createMediaErrors.length > 0) {
+        return {
+          status: "image_error" as const,
+          message: createMediaErrors[0]?.message || "Could not attach images to product.",
+        };
+      }
+
+      return {
+        status: "images_uploaded" as const,
+        uploadedCount: uploadedResourceUrls.length,
+      };
+    } catch (error) {
+      return {
+        status: "image_error" as const,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error while uploading images.",
+      };
+    }
+  }
+
+  return null;
+};
+
+const pageShellStyle: CSSProperties = {
+  backgroundColor: "#f1f2f4",
+  minHeight: "100%",
+};
+
+export default function ProductPage() {
+  const { product, otherProducts, usage, shopifyError } =
+    useLoaderData<typeof loader>();
+  const fetcher = useFetcher<typeof action>();
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadFileCount, setUploadFileCount] = useState(0);
+  const [autoAttachAiImage, setAutoAttachAiImage] = useState(false);
+
+  useEffect(() => {
+    if (fetcher.data?.status === "images_uploaded") {
+      setUploadFileCount(0);
+      if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
+    }
+  }, [fetcher.data?.status]);
+
+  const isUploadSubmitting =
+    fetcher.state === "submitting" &&
+    fetcher.formData?.get("intent") === "upload_images";
+  const isGeneratingImage =
+    fetcher.state === "submitting" &&
+    (fetcher.formData?.get("intent") === "generate_image" ||
+      fetcher.formData?.get("intent") === "generate_image_auto");
+  const isApplyingAiImage =
+    fetcher.state === "submitting" &&
+    fetcher.formData?.get("intent") === "apply_ai_image";
+  const isGeneratingSeo =
+    fetcher.state === "submitting" &&
+    fetcher.formData?.get("intent") === "generate";
+  const isSavingManualSeo =
+    fetcher.state === "submitting" &&
+    fetcher.formData?.get("intent") === "apply" &&
+    fetcher.formData?.get("applySource") === "manual";
+  const isSavingAiSeoToProduct =
+    fetcher.state === "submitting" &&
+    fetcher.formData?.get("intent") === "apply" &&
+    fetcher.formData?.get("applySource") !== "manual";
+
+  if (!product) {
+    return (
+      <div style={pageShellStyle}>
+        <s-page
+          heading={shopifyError ? "Could not load product" : "Product not found"}
+        >
+          <s-section>
+            <EmbeddedNavLink hrefPathname="/app/products">
+              ← Back to product list
+            </EmbeddedNavLink>
+          </s-section>
+          {shopifyError ? (
+            <s-section heading="Connection problem">
+              <s-text tone="critical">{shopifyError}</s-text>
+              <s-text tone="neutral">
+                This usually means the machine running your app cannot reach
+                Shopify over HTTPS (offline Wi‑Fi, corporate firewall, VPN, or
+                WSL networking). The admin session is fine; the outbound request
+                failed before Shopify replied.
+              </s-text>
+            </s-section>
+          ) : (
+            <s-section>
+              <s-paragraph>
+                We couldn&apos;t find this product. Try navigating from the
+                products list again.
+              </s-paragraph>
+            </s-section>
+          )}
+        </s-page>
+      </div>
+    );
+  }
+
+  return (
+    <div style={pageShellStyle}>
+    <s-page heading={`Optimize: ${product.title}`}>
+      <s-section>
+        <EmbeddedNavLink hrefPathname="/app/products">
+          ← Back to product list
+        </EmbeddedNavLink>
+      </s-section>
+      <s-section>
+        <s-stack direction="block" gap="base">
+          <s-text tone="subdued">
+            AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
+            {usage.plan === "free"
+              ? " (Free trial)"
+              : usage.plan === "image"
+                ? " (AI Image plan)"
+                : " (Paid plan)"}
+          </s-text>
+          {usage.plan === "image" ? (
+            <s-text tone="subdued">
+              AI images this month: {usage.aiImageUsed} / {usage.aiImageMonthlyLimit}
+            </s-text>
+          ) : null}
+        </s-stack>
+      </s-section>
+      <s-section heading="Current product content">
+        <s-text tone="neutral">
+          Shop inventory (available, summed across all locations):{" "}
+          {product.availableStockSum}
+        </s-text>
+        <s-text font-weight="bold">Description</s-text>
+        <s-box
+          padding="base"
+          borderWidth="base"
+          borderRadius="base"
+          background="subdued"
+        >
+          <div
+            style={{ whiteSpace: "pre-wrap" }}
+            dangerouslySetInnerHTML={{
+              __html: product.descriptionHtml || "<p>No description yet.</p>",
+            }}
+          />
+        </s-box>
+
+        <s-stack direction="block" gap="base">
+          <s-text font-weight="bold">Current images</s-text>
+          {product.images?.nodes?.length ? (
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              {product.images.nodes.map((img) => (
+                <img
+                  key={img.id}
+                  src={img.url}
+                  alt={img.altText || product.title}
+                  style={{
+                    width: 72,
+                    height: 72,
+                    objectFit: "cover",
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <s-text tone="subdued">No images found for this product.</s-text>
+          )}
+
+          <s-text font-weight="bold">SEO title</s-text>
+          <s-text>
+            {product.seo?.title || "No SEO title set. AI will suggest one."}
+          </s-text>
+
+          <s-text font-weight="bold">SEO description</s-text>
+          <s-text>
+            {product.seo?.description ||
+              "No SEO description set. AI will suggest one."}
+          </s-text>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="AI SEO">
+        <s-stack direction="block" gap="base">
+          {fetcher.data?.status === "quota_exceeded" && (
+            <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
+              <s-text tone="critical">
+                Your free AI quota is over. Upgrade to the $9/month plan to continue AI generation.
+              </s-text>
+            </s-box>
+          )}
+
+          <button
+            type="button"
+            disabled={isGeneratingSeo}
+            onClick={() => {
+              fetcher.submit({ intent: "generate" }, { method: "post" });
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              backgroundColor: "#2563eb",
+              borderColor: "#2563eb",
+              color: "#ffffff",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderRadius: 8,
+              padding: "0.6rem 1rem",
+              fontWeight: 600,
+              fontSize: "0.875rem",
+              cursor: isGeneratingSeo ? "not-allowed" : "pointer",
+              opacity: isGeneratingSeo ? 0.9 : 1,
+            }}
+          >
+            {isGeneratingSeo ? (
+              <>
+                <AiSpinner size={16} variant="onDark" aria-hidden />
+                Generating…
+              </>
+            ) : (
+              "Generate SEO with AI"
+            )}
+          </button>
+
+          {fetcher.data?.status === "applied" &&
+            fetcher.data.applySource !== "manual" && (
+            <s-text tone="success">
+              AI SEO changes saved to the product in Shopify.
+            </s-text>
+          )}
+
+          {fetcher.data?.status === "error" &&
+            fetcher.data.applySource !== "manual" && (
+            <s-text tone="critical">
+              Could not save changes:{" "}
+              {fetcher.data.userErrors?.[0]?.message || "Unknown error"}
+            </s-text>
+          )}
+
+          {fetcher.data?.ai && (
+            <>
+              <s-heading>AI description</s-heading>
+              <s-box
+                padding="base"
+                borderWidth="base"
+                borderRadius="base"
+                background="subdued"
+              >
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: fetcher.data.ai.descriptionHtml,
+                  }}
+                />
+              </s-box>
+
+              <s-heading>AI SEO title</s-heading>
+              <s-text>{fetcher.data.ai.seoTitle}</s-text>
+
+              <s-heading>AI SEO description</s-heading>
+              <s-text>{fetcher.data.ai.seoDescription}</s-text>
+
+              <button
+                type="button"
+                disabled={isSavingAiSeoToProduct}
+                onClick={() => {
+                  fetcher.submit(
+                    {
+                      intent: "apply",
+                      applySource: "ai",
+                      descriptionHtml: fetcher.data.ai.descriptionHtml,
+                      seoTitle: fetcher.data.ai.seoTitle,
+                      seoDescription: fetcher.data.ai.seoDescription,
+                    },
+                    { method: "post" },
+                  );
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  backgroundColor: "#2563eb",
+                  borderColor: "#2563eb",
+                  color: "#ffffff",
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderRadius: 8,
+                  padding: "0.55rem 1rem",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  cursor: isSavingAiSeoToProduct ? "not-allowed" : "pointer",
+                  opacity: isSavingAiSeoToProduct ? 0.9 : 1,
+                }}
+              >
+                {isSavingAiSeoToProduct ? (
+                  <>
+                    <AiSpinner size={16} variant="onDark" aria-hidden />
+                    Saving…
+                  </>
+                ) : (
+                  "Save to product"
+                )}
+              </button>
+
+            </>
+          )}
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Generate Image AI">
+        <s-stack direction="block" gap="base">
+          <s-text tone="neutral">
+            Create a new product photo with AI and attach it to this product. The{" "}
+            <strong>AI Image</strong> plan is {AI_IMAGE_PLAN_LABEL} and includes up to{" "}
+            {AI_IMAGE_MONTHLY_INCLUDED} AI-generated images per billing month (not included
+            in the free SEO trial). Top-up packs can be offered for extra images.
+          </s-text>
+
+          {(isGeneratingImage || isApplyingAiImage) && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <div
+                className="ai-loading-row"
+                style={{ gap: "0.65rem", alignItems: "center" }}
+              >
+                <AiSpinner
+                  size={22}
+                  variant="muted"
+                  aria-label={
+                    isGeneratingImage ? "Generating image" : "Updating product"
+                  }
+                />
+                <s-text font-weight="bold">
+                  {isGeneratingImage
+                    ? "Generating AI image…"
+                    : "Updating product…"}
+                </s-text>
+              </div>
+              <p
+                style={{
+                  margin: "0.35rem 0 0",
+                  color: "var(--p-color-text-secondary, #616161)",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {isGeneratingImage
+                  ? "Please wait — this usually takes a few seconds."
+                  : "Attaching the image to this product in Shopify. Please wait."}
+              </p>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "image_preview" && fetcher.data.imageUrl && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-text font-weight="bold">AI image preview</s-text>
+              <p
+                style={{
+                  margin: "0.35rem 0 0",
+                  color: "var(--p-color-text-success, #008060)",
+                  fontSize: "0.875rem",
+                }}
+              >
+                Image created. Review it below, tick the box, then click &quot;Update
+                image&quot; to save it to this product.
+              </p>
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                }}
+              >
+                <img
+                  src={fetcher.data.imageUrl}
+                  alt={fetcher.data.productTitle || product.title}
+                  style={{
+                    width: 160,
+                    height: 160,
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    border: "1px solid #d0d4d9",
+                    background: "#fff",
+                  }}
+                />
+                <div style={{ flex: "1 1 180px", minWidth: "180px" }}>
+                  <s-text tone="subdued" as="p" style={{ marginBottom: "0.5rem" }}>
+                    Tick to confirm you want to attach this AI image to the product, then
+                    click Update image.
+                  </s-text>
+                  <fetcher.Form method="post">
+                    <input type="hidden" name="intent" value="apply_ai_image" />
+                    <input
+                      type="hidden"
+                      name="imageUrl"
+                      value={fetcher.data.imageUrl}
+                    />
+                    <input
+                      type="hidden"
+                      name="productTitle"
+                      value={fetcher.data.productTitle || product.title}
+                    />
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        name="confirmAttach"
+                        value="yes"
+                        required
+                      />
+                      <s-text>Update product images with this AI image</s-text>
+                    </label>
+                    {/*
+                      Native submit: Polaris s-button defaults to type="button" and does not
+                      submit fetcher.Form, so "Update image" did nothing after preview.
+                    */}
+                    <button
+                      type="submit"
+                      disabled={isApplyingAiImage}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        backgroundColor: "#15803d",
+                        borderColor: "#15803d",
+                        color: "#ffffff",
+                        borderWidth: 1,
+                        borderStyle: "solid",
+                        borderRadius: 8,
+                        padding: "0.55rem 1rem",
+                        fontWeight: 600,
+                        fontSize: "0.875rem",
+                        cursor: isApplyingAiImage ? "not-allowed" : "pointer",
+                        opacity: isApplyingAiImage ? 0.88 : 1,
+                      }}
+                    >
+                      {isApplyingAiImage ? (
+                        <>
+                          <AiSpinner size={16} variant="onDark" aria-hidden />
+                          Updating…
+                        </>
+                      ) : (
+                        "Update image"
+                      )}
+                    </button>
+                  </fetcher.Form>
+                </div>
+              </div>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "image_plan_required" && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-text tone="critical">
+                AI image generation requires the AI Image plan ({AI_IMAGE_PLAN_LABEL},{" "}
+                {AI_IMAGE_MONTHLY_INCLUDED} images/month). Subscribe in the app billing
+                settings when available, or ask your developer to set your store plan to
+                enable testing.
+              </s-text>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "image_quota_exceeded" && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-text tone="critical">
+                You have used all {AI_IMAGE_MONTHLY_INCLUDED} AI images for this period.
+                Add a top-up or wait for the next billing cycle.
+              </s-text>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "image_generated" && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-text tone="success" font-weight="bold">
+                {fetcher.data.appliedMode === "auto"
+                  ? "Product updated automatically"
+                  : "Product updated"}
+              </s-text>
+              <p
+                style={{
+                  margin: "0.35rem 0 0",
+                  color: "var(--p-color-text-success, #008060)",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {fetcher.data.appliedMode === "auto"
+                  ? "The AI image was added to this product without preview. Check “Current images” above; if it is not visible yet, wait a few seconds and refresh this page."
+                  : "The AI image was attached to this product. Check “Current images” above; if it is not visible yet, wait a few seconds and refresh this page."}
+              </p>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "image_processing" && (
+            <s-box
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-text font-weight="bold">Image processing</s-text>
+              <p
+                style={{
+                  margin: "0.35rem 0 0",
+                  color: "var(--p-color-text-secondary, #616161)",
+                  fontSize: "0.875rem",
+                }}
+              >
+                Shopify is still processing the image. Wait 10–30 seconds, then refresh
+                this page. The product was updated; the file may appear shortly.
+              </p>
+            </s-box>
+          )}
+
+          {fetcher.data?.status === "ai_image_error" && (
+            <s-text tone="critical">{fetcher.data.message}</s-text>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                backgroundColor: "#dc2626",
+                borderColor: "#b91c1c",
+                color: "#ffffff",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderRadius: 8,
+                padding: "0.6rem 1rem",
+                fontWeight: 600,
+                cursor: isGeneratingImage ? "not-allowed" : "pointer",
+                opacity: isGeneratingImage ? 0.75 : 1,
+              }}
+              disabled={isGeneratingImage}
+              onClick={() => {
+                fetcher.submit(
+                  {
+                    intent: autoAttachAiImage
+                      ? "generate_image_auto"
+                      : "generate_image",
+                  },
+                  { method: "post" },
+                );
+              }}
+            >
+              {isGeneratingImage ? (
+                <>
+                  <AiSpinner size={16} variant="onDark" aria-hidden />
+                  Generating…
+                </>
+              ) : (
+                "Generate Image with AI"
+              )}
+            </button>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={autoAttachAiImage}
+                onChange={(e) =>
+                  setAutoAttachAiImage(e.currentTarget.checked)
+                }
+              />
+              <s-text>Update automatically (no preview)</s-text>
+            </label>
+          </div>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Update SEO manually">
+        <fetcher.Form method="post">
+          <s-stack direction="block" gap="base">
+            <input type="hidden" name="intent" value="apply" />
+            <input type="hidden" name="applySource" value="manual" />
+
+            {isSavingManualSeo && (
+              <s-box
+                padding="base"
+                borderWidth="base"
+                borderRadius="base"
+                background="subdued"
+              >
+                <div
+                  className="ai-loading-row"
+                  style={{ gap: "0.65rem", alignItems: "center" }}
+                >
+                  <AiSpinner size={22} variant="muted" aria-label="Saving manual SEO" />
+                  <s-text font-weight="bold">Saving to Shopify…</s-text>
+                </div>
+                <p
+                  style={{
+                    margin: "0.35rem 0 0",
+                    color: "var(--p-color-text-secondary, #616161)",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  Updating description and SEO fields on this product.
+                </p>
+              </s-box>
+            )}
+
+            <label>
+              <s-text font-weight="bold">Description (HTML)</s-text>
+              <textarea
+                name="descriptionHtml"
+                rows={8}
+                defaultValue={product.descriptionHtml || ""}
+                style={{ width: "100%", padding: "0.5rem" }}
+              />
+            </label>
+
+            <label>
+              <s-text font-weight="bold">SEO title</s-text>
+              <input
+                name="seoTitle"
+                defaultValue={product.seo?.title || ""}
+                style={{ width: "100%", padding: "0.5rem" }}
+              />
+            </label>
+
+            <label>
+              <s-text font-weight="bold">SEO description</s-text>
+              <textarea
+                name="seoDescription"
+                rows={4}
+                defaultValue={product.seo?.description || ""}
+                style={{ width: "100%", padding: "0.5rem" }}
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={isSavingManualSeo}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                backgroundColor: "#2563eb",
+                borderColor: "#2563eb",
+                color: "#ffffff",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderRadius: 8,
+                padding: "0.55rem 1rem",
+                fontWeight: 600,
+                cursor: isSavingManualSeo ? "not-allowed" : "pointer",
+                opacity: isSavingManualSeo ? 0.9 : 1,
+              }}
+            >
+              {isSavingManualSeo ? (
+                <>
+                  <AiSpinner size={16} variant="onDark" aria-hidden />
+                  Saving…
+                </>
+              ) : (
+                "Save manual SEO"
+              )}
+            </button>
+
+            {fetcher.data?.status === "applied" &&
+              fetcher.data.applySource === "manual" && (
+                <s-box
+                  padding="base"
+                  borderWidth="base"
+                  borderRadius="base"
+                  background="subdued"
+                >
+                  <s-text tone="success" font-weight="bold">
+                    Manual SEO updated
+                  </s-text>
+                  <p
+                    style={{
+                      margin: "0.35rem 0 0",
+                      color: "var(--p-color-text-success, #008060)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    Description and SEO title/description were saved to this product in
+                    Shopify.
+                  </p>
+                </s-box>
+              )}
+
+            {fetcher.data?.status === "error" &&
+              fetcher.data.applySource === "manual" && (
+                <s-text tone="critical">
+                  Could not save manual SEO:{" "}
+                  {fetcher.data.userErrors?.[0]?.message || "Unknown error"}
+                </s-text>
+              )}
+          </s-stack>
+        </fetcher.Form>
+      </s-section>
+
+      <s-section heading="Update product images">
+        <s-stack direction="block" gap="base">
+          <s-text>
+            Paste one or more public image URLs (one per line), then add them to
+            this product.
+          </s-text>
+          <textarea
+            name="imageUrls"
+            form="add-images-form"
+            rows={5}
+            style={{ width: "100%", padding: "0.5rem" }}
+            placeholder={`https://example.com/image-1.jpg\nhttps://example.com/image-2.jpg`}
+          />
+          <form
+            id="add-images-form"
+            method="post"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const formData = new FormData(form);
+              formData.set("intent", "add_images");
+              fetcher.submit(formData, { method: "post" });
+            }}
+          >
+            <input type="hidden" name="intent" value="add_images" />
+            <button
+              type="submit"
+              disabled={
+                fetcher.state === "submitting" &&
+                fetcher.formData?.get("intent") === "add_images"
+              }
+              style={{
+                padding: "0.5rem 0.85rem",
+                fontWeight: 600,
+                borderRadius: 8,
+                border: "1px solid #cbd5e1",
+                background: "#f3f4f6",
+                color: "#111827",
+                cursor:
+                  fetcher.state === "submitting" &&
+                  fetcher.formData?.get("intent") === "add_images"
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              {fetcher.state === "submitting" &&
+              fetcher.formData?.get("intent") === "add_images"
+                ? "Adding…"
+                : "Add images from URLs"}
+            </button>
+          </form>
+
+          {fetcher.data?.status === "images_added" && (
+            <s-text tone="success">
+              Images updated successfully. Added {fetcher.data.addedCount} image(s).
+            </s-text>
+          )}
+
+          {fetcher.data?.status === "image_error" && (
+            <s-text tone="critical">{fetcher.data.message}</s-text>
+          )}
+
+          <s-text font-weight="bold">Upload from computer</s-text>
+          <fetcher.Form method="post" encType="multipart/form-data">
+            <s-stack direction="block" gap="base">
+              <input type="hidden" name="intent" value="upload_images" />
+              <input
+                ref={uploadFileInputRef}
+                type="file"
+                name="images"
+                accept="image/*"
+                multiple
+                onChange={(e) =>
+                  setUploadFileCount(e.currentTarget.files?.length ?? 0)
+                }
+              />
+              {uploadFileCount > 0 ? (
+                <s-text tone="subdued" as="p" style={{ margin: 0 }}>
+                  {uploadFileCount} image
+                  {uploadFileCount === 1 ? "" : "s"} selected — ready to upload
+                </s-text>
+              ) : null}
+              <button
+                type="submit"
+                disabled={uploadFileCount === 0 || isUploadSubmitting}
+                style={{
+                  padding: "0.55rem 1rem",
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: uploadFileCount > 0 ? "#2563eb" : "#cbd5e1",
+                  backgroundColor: uploadFileCount > 0 ? "#2563eb" : "#f3f4f6",
+                  color: uploadFileCount > 0 ? "#ffffff" : "#6b7280",
+                  cursor:
+                    uploadFileCount === 0 || isUploadSubmitting
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity: uploadFileCount === 0 ? 0.7 : 1,
+                }}
+              >
+                {isUploadSubmitting
+                  ? "Uploading images…"
+                  : "Upload selected images"}
+              </button>
+            </s-stack>
+          </fetcher.Form>
+
+          {fetcher.data?.status === "images_uploaded" && (
+            <s-text tone="success">
+              Images updated successfully. Uploaded {fetcher.data.uploadedCount} image(s).
+            </s-text>
+          )}
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Other products">
+        {otherProducts.length <= 1 ? (
+          <p
+            style={{
+              margin: 0,
+              color: "var(--p-color-text-subdued, #6d7175)",
+              fontSize: "0.875rem",
+            }}
+          >
+            No other products.{" "}
+            <EmbeddedNavLink
+              hrefPathname="/app/products"
+              style={{
+                color: "var(--p-color-text-link, #2c6ecb)",
+                fontWeight: 600,
+              }}
+            >
+              View all products
+            </EmbeddedNavLink>
+          </p>
+        ) : (
+          <s-stack direction="block" gap="base">
+            {otherProducts.map((p) => {
+              if (p.id === product.id) return null;
+              const pathSeg = productPathSegmentFromGid(p.id);
+              const firstImageNode = p.images?.nodes?.[0];
+              const firstMediaImage = p.media?.nodes?.find(
+                (n) => n.image?.url,
+              )?.image;
+              const thumbUrl =
+                p.featuredImage?.url ||
+                firstImageNode?.url ||
+                firstMediaImage?.url;
+              const thumbAlt =
+                p.featuredImage?.altText ||
+                firstImageNode?.altText ||
+                firstMediaImage?.altText ||
+                p.title;
+              const hasStoreSeo = Boolean(
+                p.seo?.title?.trim() || p.seo?.description?.trim(),
+              );
+              return (
+                <s-box
+                  key={p.id}
+                  padding="base"
+                  borderWidth="base"
+                  borderRadius="base"
+                  background="subdued"
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div
+                      style={{
+                        flexShrink: 0,
+                        width: 56,
+                        height: 56,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "#e3e3e3",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {thumbUrl ? (
+                        <img
+                          src={thumbUrl}
+                          alt={thumbAlt}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 24,
+                            color: "#8c9196",
+                          }}
+                          aria-hidden
+                        >
+                          —
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ flex: "1", minWidth: "12rem" }}>
+                      <div style={{ display: "block" }}>
+                        <EmbeddedNavLink
+                          hrefPathname={`/app/products/${pathSeg}`}
+                          style={{
+                            display: "inline-block",
+                            fontWeight: 600,
+                            color: "var(--p-color-text-link, #2c6ecb)",
+                            textDecoration: "none",
+                          }}
+                        >
+                          {p.title}
+                        </EmbeddedNavLink>
+                      </div>
+                      <p
+                        style={{
+                          margin: "0.35rem 0 0",
+                          fontSize: "0.875rem",
+                          color: "var(--p-color-text-subdued, #6d7175)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Status: {p.status}
+                        {" · "}
+                        {hasStoreSeo
+                          ? "Storefront SEO set"
+                          : "Storefront SEO not set"}
+                      </p>
+                    </div>
+                  </div>
+                </s-box>
+              );
+            })}
+          </s-stack>
+        )}
+      </s-section>
+    </s-page>
+    </div>
+  );
+}
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
+

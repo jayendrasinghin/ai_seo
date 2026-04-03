@@ -1,0 +1,32 @@
+@keyframes ai-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-loading-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 99, 235, 0.2);
+  border-top-color: #2563eb;
+  animation: ai-loading-spin 0.65s linear infinite;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.ai-loading-spinner--muted {
+  border-color: rgba(15, 23, 42, 0.12);
+  border-top-color: #64748b;
+}
+
+.ai-loading-spinner--on-dark {
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+}
+
+.ai-loading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
