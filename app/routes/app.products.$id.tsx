@@ -21,8 +21,8 @@ type LoaderProduct = {
   id: string;
   title: string;
   status: string;
-  /** Sum of available across variants and locations. */
-  availableStockSum: number;
+  /** Sum of available across variants and locations; null if not fetched (no inventory scope). */
+  availableStockSum: number | null;
   descriptionHtml: string | null;
   images: {
     nodes: Array<{

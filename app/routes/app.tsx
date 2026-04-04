@@ -26,12 +26,6 @@ export default function App() {
         <s-link href={withEmbeddedSearch("/app/products", search)}>
           Product Tools
         </s-link>
-        <s-link href={withEmbeddedSearch("/app/seo-writer", search)}>
-          AI SEO Writer
-        </s-link>
-        <s-link href={withEmbeddedSearch("/app/image-generator", search)}>
-          AI Image Generator
-        </s-link>
         <s-link href={withEmbeddedSearch("/app/manage", search)}>
           Stock &amp; New Product
         </s-link>

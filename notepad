@@ -9,7 +9,18 @@ ai_product_desc
 
 OPENAI_API_KEY=""
 
+sudo -u postgres psql
 
+DROP DATABASE ai_product_desc;
+DROP USER ai_product_descuser;
+
+CREATE DATABASE ai_product_desc;
+CREATE USER ai_product_descuser WITH PASSWORD 'myaiprod2023';
+grant all privileges on database ai_product_desc to ai_product_descuser ;
+ALTER DATABASE ai_product_desc OWNER TO ai_product_descuser;
+
+npm exec prisma migrate deploy
+npx prisma migrate deploy
 
 
 jayendra.singh.in@gmail.com

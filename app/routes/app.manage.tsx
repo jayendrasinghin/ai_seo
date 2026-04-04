@@ -4,12 +4,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import {
-  Form,
-  useFetcher,
-  useLoaderData,
-  useLocation,
-} from "react-router";
+import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { applyAvailableQuantityToAllLocations } from "../inventory-locations.server";
@@ -20,6 +15,26 @@ const pageShellStyle: CSSProperties = {
   backgroundColor: "#f1f2f4",
   minHeight: "100%",
 };
+
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+function managePathWithQ(locationSearch: string, q: string): string {
+  const p = new URLSearchParams(
+    locationSearch.startsWith("?") ? locationSearch.slice(1) : locationSearch,
+  );
+  const t = q.trim();
+  if (t) p.set("q", t);
+  else p.delete("q");
+  const qs = p.toString();
+  return qs.length > 0 ? `/app/manage?${qs}` : "/app/manage";
+}
 
 type ManageVariant = {
   id: string;
@@ -637,20 +652,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ManagePage() {
-  const { error, locations, products, productSearch } =
-    useLoaderData<typeof loader>();
+  const loaderData = useLoaderData<typeof loader>();
   const location = useLocation();
   const fetcher = useFetcher<typeof action>();
-  const manageSearchFormAction = useMemo(() => {
-    const preserved = new URLSearchParams(location.search);
-    preserved.delete("q");
-    const qs = preserved.toString();
-    return qs.length > 0 ? `/app/manage?${qs}` : "/app/manage";
-  }, [location.search]);
+  const manageSearchFetcher = useFetcher<typeof loader>();
+
+  const [inputValue, setInputValue] = useState(loaderData.productSearch);
+  useEffect(() => {
+    setInputValue(loaderData.productSearch);
+  }, [loaderData.productSearch]);
+
+  const debouncedInput = useDebouncedValue(inputValue, 320);
+
+  useEffect(() => {
+    if (loaderData.error) return;
+    manageSearchFetcher.load(managePathWithQ(location.search, debouncedInput));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedInput, location.search, loaderData.error]);
+
+  const searchingLive =
+    !loaderData.error &&
+    manageSearchFetcher.state === "loading" &&
+    debouncedInput.trim() !== loaderData.productSearch;
+
+  const useLive =
+    !loaderData.error &&
+    manageSearchFetcher.state === "idle" &&
+    manageSearchFetcher.data &&
+    !manageSearchFetcher.data.error &&
+    manageSearchFetcher.data.productSearch === debouncedInput.trim();
+
+  const display = useLive && manageSearchFetcher.data
+    ? manageSearchFetcher.data
+    : loaderData;
+
+  const { error, locations, products, productSearch } = display;
+
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
   const createImagesRef = useRef<HTMLInputElement>(null);
   const [createImageCount, setCreateImageCount] = useState(0);
+
+  useEffect(() => {
+    if (searchingLive) return;
+    if (productId && !products.some((p) => p.id === productId)) {
+      setProductId("");
+      setVariantId("");
+    }
+  }, [searchingLive, products, productId]);
 
   useEffect(() => {
     if (
@@ -661,6 +710,10 @@ export default function ManagePage() {
       if (createImagesRef.current) createImagesRef.current.value = "";
     }
   }, [fetcher.data?.status]);
+
+  const commitSearchToUrl = () => {
+    window.location.assign(managePathWithQ(location.search, inputValue));
+  };
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === productId),
@@ -719,16 +772,13 @@ export default function ManagePage() {
               inventory levels per variant). Saving sets that same quantity at{" "}
               <strong>all</strong> active locations in Shopify. Locations marked{" "}
               <strong>Not stocked yet</strong> are activated first, then existing
-              levels are adjusted. The list below shows up to 25 products (recently
-              updated first, or matches when you search) to stay within API limits.
+              levels are adjusted. The product list shows up to 25 matches (recently
+              updated first when not filtering). Type to filter — results refresh as you
+              type; use <strong>Update URL</strong> to bookmark or share the current
+              filter.
             </s-text>
 
-            <Form
-              method="get"
-              replace
-              action={manageSearchFormAction}
-              style={{ maxWidth: "28rem" }}
-            >
+            <div style={{ maxWidth: "28rem" }}>
               <div
                 style={{
                   display: "flex",
@@ -740,10 +790,10 @@ export default function ManagePage() {
                 <label style={{ flex: "1", minWidth: "12rem" }}>
                   <s-text font-weight="bold">Find a product</s-text>
                   <input
-                    name="q"
                     type="search"
-                    defaultValue={productSearch}
-                    placeholder="Search by title, SKU…"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Type to filter — title, SKU, type…"
                     autoComplete="off"
                     style={{
                       display: "block",
@@ -753,11 +803,24 @@ export default function ManagePage() {
                     }}
                   />
                 </label>
-                <s-button type="submit" variant="secondary">
-                  Search
+                <s-button type="button" variant="secondary" onClick={commitSearchToUrl}>
+                  Update URL
                 </s-button>
               </div>
-            </Form>
+              {productSearch ? (
+                <s-text tone="subdued">
+                  Filter: &quot;{productSearch}&quot; — up to 25 in the dropdown.
+                </s-text>
+              ) : (
+                <s-text tone="subdued">
+                  Up to 25 products in the dropdown, newest updated first. Results
+                  refresh as you type.
+                </s-text>
+              )}
+              {searchingLive ? (
+                <s-text tone="subdued">Loading matches…</s-text>
+              ) : null}
+            </div>
 
             <div
               style={{
@@ -811,6 +874,7 @@ export default function ManagePage() {
               <label style={{ display: "block", flex: "1", minWidth: "12rem" }}>
                 <s-text font-weight="bold">Product</s-text>
                 <select
+                  disabled={searchingLive}
                   style={{
                     display: "block",
                     width: "100%",
@@ -819,10 +883,10 @@ export default function ManagePage() {
                     padding: "0.5rem",
                   }}
                   value={productId}
-                onChange={(e) => {
-                  setProductId(e.target.value);
-                  setVariantId("");
-                }}
+                  onChange={(e) => {
+                    setProductId(e.target.value);
+                    setVariantId("");
+                  }}
                 >
                   <option value="">Select a product</option>
                   {products.map((p) => (

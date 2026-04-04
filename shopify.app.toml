@@ -2,7 +2,7 @@
 
 client_id = "3b46a7d5b955f46d2298724437e64a02"
 name = "ai-product-descriptions-seo"
-application_url = "https://example.com"
+application_url = "https://seoi.in"
 embedded = true
 
 [build]
@@ -27,4 +27,4 @@ scopes = "read_products,write_products,read_inventory,write_inventory,read_locat
 
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://seoi.in/auth/callback" ]
