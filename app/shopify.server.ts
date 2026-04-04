@@ -1,25 +1,5 @@
-import { config as loadDotenv } from "dotenv";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import "./load-env.server";
 import "@shopify/shopify-app-react-router/adapters/node";
-
-const __shopifyServerDir = path.dirname(fileURLToPath(import.meta.url));
-let loadedEnv = false;
-for (const envPath of [
-  path.join(process.cwd(), ".env"),
-  path.resolve(__shopifyServerDir, "..", "..", ".env"),
-  path.resolve(__shopifyServerDir, "..", ".env"),
-]) {
-  if (existsSync(envPath)) {
-    loadDotenv({ path: envPath });
-    loadedEnv = true;
-    break;
-  }
-}
-if (!loadedEnv) {
-  loadDotenv();
-}
 import {
   ApiVersion,
   AppDistribution,

@@ -1,6 +1,13 @@
 ssh root@64.227.159.135 -i ~/webkey
 ssh root@159.223.197.194 -i ~/webkey
 
+npm run build
+npm start
+
+grep SHOPIFY_APP_URL ~/ai_seo/.env
+export SHOPIFY_APP_URL=https://seoi.in
+
+
 
 ai_product_descuser
 myaiprod2023
@@ -26,6 +33,7 @@ npx prisma migrate deploy
 jayendra.singh.in@gmail.com
 
 https://platform.openai.com/welcome?step=try
+
 
 API key name
 shopify-ai-seo-image-prod
