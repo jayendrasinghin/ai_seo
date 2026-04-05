@@ -29,6 +29,9 @@ export default function App() {
         <s-link href={withEmbeddedSearch("/app/manage", search)}>
           Stock &amp; New Product
         </s-link>
+        <s-link href={withEmbeddedSearch("/app/billing/plans", search)}>
+          Plans &amp; billing
+        </s-link>
         <s-link href={withEmbeddedSearch("/app/support", search)}>
           Help &amp; support
         </s-link>

@@ -16,6 +16,7 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { generateImageAltText } from "../ai.server";
+import { planSeoUsesFreeQuota } from "../plan-helpers";
 
 const SHORT_ALT_MIN = 20;
 
@@ -190,7 +191,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       create: { shop: session.shop },
     });
     const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
-    if (usage.plan === "free" && totalAiUsed >= usage.freeQuotaLimit) {
+    if (planSeoUsesFreeQuota(usage.plan) && totalAiUsed >= usage.freeQuotaLimit) {
       return {
         status: "quota_exceeded" as const,
         message:
@@ -710,7 +711,7 @@ export default function Index() {
                         flexWrap: "wrap",
                       }}
                     >
-                      {usage.plan === "free" && usage.aiUsed >= usage.freeQuotaLimit ? (
+                      {planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit ? (
                         <s-text tone="critical">
                           Free AI quota reached. Upgrade plan to use Generate/Apply bulk AI
                           suggestions.
@@ -722,7 +723,7 @@ export default function Index() {
                         value="generate_alt_suggestions"
                         disabled={
                           selectedIssueIds.length === 0 ||
-                          (usage.plan === "free" && usage.aiUsed >= usage.freeQuotaLimit) ||
+                          (planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit) ||
                           isGeneratingSuggestions ||
                           isApplyingSuggestions
                         }
@@ -747,7 +748,7 @@ export default function Index() {
                         value="apply_alt_suggestions"
                         disabled={
                           selectedIssueIds.length === 0 ||
-                          (usage.plan === "free" && usage.aiUsed >= usage.freeQuotaLimit) ||
+                          (planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit) ||
                           isGeneratingSuggestions ||
                           isApplyingSuggestions
                         }

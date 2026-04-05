@@ -16,6 +16,7 @@ import {
   AI_IMAGE_PLAN_LABEL,
 } from "../pricing";
 import prisma from "../db.server";
+import { planImageAllowed, planSeoUsesFreeQuota } from "../plan-helpers";
 
 type LoaderProduct = {
   id: string;
@@ -242,7 +243,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
-    if (totalAiUsed >= usage.freeQuotaLimit && usage.plan === "free") {
+    if (totalAiUsed >= usage.freeQuotaLimit && planSeoUsesFreeQuota(usage.plan)) {
       return { status: "quota_exceeded" as const };
     }
 
@@ -311,7 +312,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (usage.plan !== "image") {
+    if (!planImageAllowed(usage.plan)) {
       return { status: "image_plan_required" as const };
     }
 
@@ -436,7 +437,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (usage.plan !== "image") {
+    if (!planImageAllowed(usage.plan)) {
       return { status: "image_plan_required" as const };
     }
 
@@ -869,11 +870,15 @@ export default function ProductPage() {
             AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
             {usage.plan === "free"
               ? " (Free trial)"
-              : usage.plan === "image"
-                ? " (AI Image plan)"
-                : " (Paid plan)"}
+              : usage.plan === "seo_image"
+                ? " (SEO Pro + AI Image)"
+                : usage.plan === "seo"
+                  ? " (SEO Pro)"
+                  : usage.plan === "image"
+                    ? " (AI Image plan)"
+                    : " (Paid plan)"}
           </s-text>
-          {usage.plan === "image" ? (
+          {planImageAllowed(usage.plan) ? (
             <s-text tone="subdued">
               AI images this month: {usage.aiImageUsed} / {usage.aiImageMonthlyLimit}
             </s-text>
@@ -941,8 +946,16 @@ export default function ProductPage() {
           {fetcher.data?.status === "quota_exceeded" && (
             <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
               <s-text tone="critical">
-                Your free AI quota is over. Upgrade to the $9/month plan to continue AI generation.
+                Your free AI quota is over. Upgrade to the SEO Pro plan to continue AI generation.
               </s-text>
+              <div style={{ marginTop: "0.5rem" }}>
+                <EmbeddedNavLink
+                  hrefPathname="/app/billing/plans"
+                  style={{ fontWeight: 600, textDecoration: "underline", color: "#1d4ed8" }}
+                >
+                  Open Plans and billing
+                </EmbeddedNavLink>
+              </div>
             </s-box>
           )}
 
@@ -1230,10 +1243,16 @@ export default function ProductPage() {
             >
               <s-text tone="critical">
                 AI image generation requires the AI Image plan ({AI_IMAGE_PLAN_LABEL},{" "}
-                {AI_IMAGE_MONTHLY_INCLUDED} images/month). Subscribe in the app billing
-                settings when available, or ask your developer to set your store plan to
-                enable testing.
+                {AI_IMAGE_MONTHLY_INCLUDED} images/month) or the bundle with SEO Pro.
               </s-text>
+              <div style={{ marginTop: "0.5rem" }}>
+                <EmbeddedNavLink
+                  hrefPathname="/app/billing/plans"
+                  style={{ fontWeight: 600, textDecoration: "underline", color: "#1d4ed8" }}
+                >
+                  Open Plans and billing
+                </EmbeddedNavLink>
+              </div>
             </s-box>
           )}
 
