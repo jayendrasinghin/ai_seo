@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { redirect, useActionData, useLoaderData, useLocation } from "react-router";
+import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -11,6 +12,7 @@ import {
   billingChargesAreTest,
   billingReturnUrl,
   createAppSubscription,
+  isPartnerDevelopmentStore,
   syncStoreUsagePlanFromShopify,
   type BillingPlanChoice,
 } from "../billing.server";
@@ -25,6 +27,7 @@ import { withEmbeddedSearch } from "../embedded-nav";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
+  const partnerDevelopment = await isPartnerDevelopmentStore(admin);
 
   const plan = await syncStoreUsagePlanFromShopify(admin, shop);
   const usage = await prisma.storeUsage.upsert({
@@ -39,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     aiSeoUsed: usage.aiSeoUsed,
     aiImageUsed: usage.aiImageUsed,
     billingTestMode: billingChargesAreTest(),
+    partnerDevelopment,
   };
 };
 
@@ -47,9 +51,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const choice = String(formData.get("plan") || "") as BillingPlanChoice;
 
-  if (choice !== "seo" && choice !== "image" && choice !== "seo_image") {
+  if (choice !== "seo" && choice !== "seo_image") {
     return { error: "Invalid plan." };
   }
+  // if (partnerDevelopment) {
+  //   return {
+  //     error:
+  //       "Development store detected. Paid subscription checkout is disabled; test features are already unlocked.",
+  //   };
+  // }
 
   const returnUrl = billingReturnUrl(session.shop);
   const result = await createAppSubscription(
@@ -63,13 +73,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { error: result.error };
   }
 
-  throw redirect(result.confirmationUrl);
+  /** Do not use HTTP redirect — embedded app iframe cannot load admin.shopify.com (X-Frame-Options). */
+  return { confirmationUrl: result.confirmationUrl };
 };
 
 export default function BillingPlansPage() {
-  const { plan, billingTestMode } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const { plan, billingTestMode, partnerDevelopment } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher<typeof action>();
   const { search } = useLocation();
+
+  useEffect(() => {
+    const data = fetcher.data;
+    if (
+      data &&
+      typeof data === "object" &&
+      "confirmationUrl" in data &&
+      typeof (data as { confirmationUrl?: string }).confirmationUrl === "string"
+    ) {
+      const url = (data as { confirmationUrl: string }).confirmationUrl;
+      if (url) {
+        const topWin = window.top ?? window;
+        topWin.location.href = url;
+      }
+    }
+  }, [fetcher.data]);
   const params = new URLSearchParams(search.replaceAll("&amp;", "&"));
   const returned = params.get("billing") === "return";
 
@@ -93,10 +120,18 @@ export default function BillingPlansPage() {
             </s-text>
           </s-section>
         ) : null}
-
-        {actionData && "error" in actionData && actionData.error ? (
+        {partnerDevelopment ? (
           <s-section>
-            <s-text tone="critical">{actionData.error}</s-text>
+            <s-text tone="info">
+              Partner development store detected. This app bypasses paid-plan checks here for
+              testing, so subscription checkout is not required.
+            </s-text>
+          </s-section>
+        ) : null}
+
+        {fetcher.data && "error" in fetcher.data && fetcher.data.error ? (
+          <s-section>
+            <s-text tone="critical">{fetcher.data.error}</s-text>
           </s-section>
         ) : null}
 
@@ -116,9 +151,11 @@ export default function BillingPlansPage() {
               {plan === "free"
                 ? "Free (100 combined AI SEO + image generations)"
                 : plan === "seo"
-                  ? `SEO Pro (${SEO_PLAN_LABEL}) — unlimited AI SEO`
-                  : plan === "image"
-                    ? `AI Image (${AI_IMAGE_PLAN_LABEL}) — ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`
+                  ? `AI SEO Pro (${SEO_PLAN_LABEL}) — unlimited AI SEO`
+                  : plan === "seo_image"
+                    ? `SEO Pro + AI Image (${AI_IMAGE_PLAN_LABEL}) — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`
+                    : plan === "image"
+                      ? `Legacy AI Image (${AI_IMAGE_PLAN_LABEL}) — ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`
                     : `SEO Pro + AI Image — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`}
             </s-text>
             {hasSeo ? (
@@ -135,35 +172,44 @@ export default function BillingPlansPage() {
         <s-section heading="Subscribe or change plan">
           <s-text tone="subdued">
             Shopify may ask you to approve a new charge when you add or change plans. If you
-            already have a subscription, the new one replaces it (combined SEO + Image uses one
-            subscription with two line items).
+            already have a subscription, the new one replaces it.
           </s-text>
           <div style={{ marginTop: "1rem" }}>
             <s-stack direction="block" gap="base">
-            <form method="post">
+            <fetcher.Form method="post">
               <input type="hidden" name="plan" value="seo" />
-              <s-button variant="primary" type="submit" disabled={plan === "seo" || plan === "seo_image"}>
-                {plan === "seo" || plan === "seo_image"
-                  ? "SEO Pro — active"
-                  : `Subscribe SEO Pro (${SEO_PLAN_LABEL})`}
-              </s-button>
-            </form>
-            <form method="post">
-              <input type="hidden" name="plan" value="image" />
-              <s-button variant="secondary" type="submit" disabled={plan === "image" || plan === "seo_image"}>
-                {plan === "image" || plan === "seo_image"
-                  ? "AI Image — active"
-                  : `Subscribe AI Image (${AI_IMAGE_PLAN_LABEL})`}
-              </s-button>
-            </form>
-            <form method="post">
+              {plan === "seo" ? (
+                <s-text tone="success">Current plan: AI SEO Pro ({SEO_PLAN_LABEL})</s-text>
+              ) : (
+                <s-button
+                  variant="primary"
+                  type="submit"
+                  disabled={fetcher.state !== "idle"}
+                >
+                  {fetcher.state !== "idle" && fetcher.formData?.get("plan") === "seo"
+                    ? "Redirecting to Shopify…"
+                    : `Subscribe AI SEO Pro (${SEO_PLAN_LABEL})`}
+                </s-button>
+              )}
+            </fetcher.Form>
+            <fetcher.Form method="post">
               <input type="hidden" name="plan" value="seo_image" />
-              <s-button variant="secondary" type="submit" disabled={plan === "seo_image"}>
-                {plan === "seo_image"
-                  ? "Bundle — active"
-                  : `Subscribe both (${SEO_PLAN_LABEL} + ${AI_IMAGE_PLAN_LABEL})`}
-              </s-button>
-            </form>
+              {plan === "seo_image" || plan === "image" ? (
+                <s-text tone="success">
+                  Current plan: SEO Pro + AI Image ({AI_IMAGE_PLAN_LABEL})
+                </s-text>
+              ) : (
+                <s-button
+                  variant="secondary"
+                  type="submit"
+                  disabled={fetcher.state !== "idle"}
+                >
+                  {fetcher.state !== "idle" && fetcher.formData?.get("plan") === "seo_image"
+                    ? "Redirecting to Shopify…"
+                    : `Subscribe SEO Pro + AI Image (${AI_IMAGE_PLAN_LABEL})`}
+                </s-button>
+              )}
+            </fetcher.Form>
             </s-stack>
           </div>
         </s-section>

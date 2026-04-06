@@ -17,6 +17,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { generateImageAltText } from "../ai.server";
 import { planSeoUsesFreeQuota } from "../plan-helpers";
+import { isPartnerDevelopmentStore } from "../billing.server";
 
 const SHORT_ALT_MIN = 20;
 
@@ -184,14 +185,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     intent === "generate_alt_suggestions" || intent === "apply_alt_suggestions";
 
   if (isAiMutation) {
-    const { session } = await authenticate.admin(request);
+    const { admin, session } = await authenticate.admin(request);
     const usage = await prisma.storeUsage.upsert({
       where: { shop: session.shop },
       update: {},
       create: { shop: session.shop },
     });
+    const partnerDevelopment = await isPartnerDevelopmentStore(admin);
     const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
-    if (planSeoUsesFreeQuota(usage.plan) && totalAiUsed >= usage.freeQuotaLimit) {
+    if (
+      !partnerDevelopment &&
+      planSeoUsesFreeQuota(usage.plan) &&
+      totalAiUsed >= usage.freeQuotaLimit
+    ) {
       return {
         status: "quota_exceeded" as const,
         message:
@@ -262,9 +268,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         id: true,
         productId: true,
         mediaId: true,
+        productTitle: true,
+        currentAlt: true,
         suggestedAlt: true,
       },
     });
+
+    let generated = 0;
+    for (const issue of issues) {
+      if (issue.suggestedAlt?.trim()) continue;
+      const { altText } = await generateImageAltText({
+        productTitle: issue.productTitle || "Product",
+        currentAlt: issue.currentAlt,
+      });
+      issue.suggestedAlt = altText;
+      await prisma.imageSeoIssue.update({
+        where: { id: issue.id },
+        data: { suggestedAlt: altText, suggestionUpdatedAt: new Date() },
+      });
+      generated += 1;
+    }
+
+    if (generated > 0) {
+      await prisma.storeUsage.update({
+        where: { shop: session.shop },
+        data: {
+          usedCredits: { increment: generated },
+          aiSeoUsed: { increment: generated },
+        },
+      });
+    }
 
     let applied = 0;
     let failed = 0;
@@ -332,6 +365,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     return {
       status: "apply_completed" as const,
+      generated,
       applied,
       failed,
       firstError,
@@ -354,6 +388,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  const partnerDevelopment = await isPartnerDevelopmentStore(admin);
   const url = new URL(request.url);
   const issueTypeFilter = (url.searchParams.get("issueType") || "ALL").toUpperCase();
   const validIssueTypeFilter =
@@ -457,6 +492,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       aiUsed: usage.aiSeoUsed + usage.aiImageUsed,
       freeQuotaLimit: usage.freeQuotaLimit,
       plan: usage.plan,
+      partnerDevelopment,
     },
     errors: json.errors ?? null,
     latestScanRun,
@@ -508,7 +544,7 @@ export default function Index() {
         ? ` First error: ${fetcher.data.firstError}`
         : "";
       setActionMessage(
-        `Applied: ${fetcher.data.applied}, Failed: ${fetcher.data.failed}.${err} Updating list...`,
+        `Generated: ${fetcher.data.generated}, Applied: ${fetcher.data.applied}, Failed: ${fetcher.data.failed}.${err} Updating list...`,
       );
       setSelectedIssueIds([]);
       revalidator.revalidate();
@@ -627,8 +663,8 @@ export default function Index() {
 
         <s-section heading="Latest scan results">
           <p style={{ margin: "0 0 0.75rem", maxWidth: "42rem", color: "#6d7175", fontSize: "0.875rem" }}>
-            Alt updates use Shopify media IDs. If Apply failed earlier, run{" "}
-            <strong>Scan now</strong> again so rows use the correct IDs, then Generate → Apply.
+            Alt updates use Shopify media IDs. Apply now auto-generates missing suggestions for
+            selected rows.
           </p>
           {!latestScanRun ? (
             <s-text tone="subdued">No scan has run yet. Click Scan now to start.</s-text>
@@ -711,7 +747,9 @@ export default function Index() {
                         flexWrap: "wrap",
                       }}
                     >
-                      {planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit ? (
+                      {!usage.partnerDevelopment &&
+                      planSeoUsesFreeQuota(usage.plan) &&
+                      usage.aiUsed >= usage.freeQuotaLimit ? (
                         <s-text tone="critical">
                           Free AI quota reached. Upgrade plan to use Generate/Apply bulk AI
                           suggestions.
@@ -723,7 +761,9 @@ export default function Index() {
                         value="generate_alt_suggestions"
                         disabled={
                           selectedIssueIds.length === 0 ||
-                          (planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit) ||
+                          (!usage.partnerDevelopment &&
+                            planSeoUsesFreeQuota(usage.plan) &&
+                            usage.aiUsed >= usage.freeQuotaLimit) ||
                           isGeneratingSuggestions ||
                           isApplyingSuggestions
                         }
@@ -748,7 +788,9 @@ export default function Index() {
                         value="apply_alt_suggestions"
                         disabled={
                           selectedIssueIds.length === 0 ||
-                          (planSeoUsesFreeQuota(usage.plan) && usage.aiUsed >= usage.freeQuotaLimit) ||
+                          (!usage.partnerDevelopment &&
+                            planSeoUsesFreeQuota(usage.plan) &&
+                            usage.aiUsed >= usage.freeQuotaLimit) ||
                           isGeneratingSuggestions ||
                           isApplyingSuggestions
                         }
@@ -763,7 +805,9 @@ export default function Index() {
                           cursor: "pointer",
                         }}
                       >
-                        {isApplyingSuggestions ? "Applying…" : "Apply selected suggestions"}
+                        {isApplyingSuggestions
+                          ? "Generating/Applying…"
+                          : "Apply selected (auto-generate missing)"}
                       </button>
                       <s-button
                         type="button"

@@ -17,6 +17,7 @@ import {
 } from "../pricing";
 import prisma from "../db.server";
 import { planImageAllowed, planSeoUsesFreeQuota } from "../plan-helpers";
+import { isPartnerDevelopmentStore } from "../billing.server";
 
 type LoaderProduct = {
   id: string;
@@ -88,6 +89,7 @@ type OtherProductRow = {
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  const partnerDevelopment = await isPartnerDevelopmentStore(admin);
 
   const rawId = params.id;
   const decodedId = productGidFromRouteParam(rawId);
@@ -101,6 +103,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     aiUsed: usageRow.aiSeoUsed + usageRow.aiImageUsed,
     freeQuotaLimit: usageRow.freeQuotaLimit,
     plan: usageRow.plan,
+    partnerDevelopment,
     aiImageUsed: usageRow.aiImageUsed,
     aiImageMonthlyLimit: AI_IMAGE_MONTHLY_INCLUDED,
   };
@@ -230,6 +233,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (intent === "generate") {
     const { admin, session } = await authenticate.admin(request);
+    const partnerDevelopment = await isPartnerDevelopmentStore(admin);
     const decodedId = productGidFromRouteParam(params.id);
 
     if (!decodedId) return null;
@@ -243,7 +247,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
-    if (totalAiUsed >= usage.freeQuotaLimit && planSeoUsesFreeQuota(usage.plan)) {
+    if (
+      !partnerDevelopment &&
+      totalAiUsed >= usage.freeQuotaLimit &&
+      planSeoUsesFreeQuota(usage.plan)
+    ) {
       return { status: "quota_exceeded" as const };
     }
 
@@ -300,6 +308,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (intent === "generate_image" || intent === "generate_image_auto") {
     const { admin, session } = await authenticate.admin(request);
+    const partnerDevelopment = await isPartnerDevelopmentStore(admin);
     const decodedId = productGidFromRouteParam(params.id);
 
     if (!decodedId) return null;
@@ -312,7 +321,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (!planImageAllowed(usage.plan)) {
+    if (!partnerDevelopment && !planImageAllowed(usage.plan)) {
       return { status: "image_plan_required" as const };
     }
 
@@ -425,6 +434,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (intent === "apply_ai_image") {
     const { admin, session } = await authenticate.admin(request);
+    const partnerDevelopment = await isPartnerDevelopmentStore(admin);
     const decodedId = productGidFromRouteParam(params.id);
 
     if (!decodedId) return null;
@@ -437,7 +447,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (!planImageAllowed(usage.plan)) {
+    if (!partnerDevelopment && !planImageAllowed(usage.plan)) {
       return { status: "image_plan_required" as const };
     }
 
@@ -875,10 +885,15 @@ export default function ProductPage() {
                 : usage.plan === "seo"
                   ? " (SEO Pro)"
                   : usage.plan === "image"
-                    ? " (AI Image plan)"
+                    ? " (SEO Pro + AI Image)"
                     : " (Paid plan)"}
           </s-text>
-          {planImageAllowed(usage.plan) ? (
+          {usage.partnerDevelopment ? (
+            <s-text tone="subdued">
+              Development store detected. Billing checks are bypassed for testing.
+            </s-text>
+          ) : null}
+          {usage.partnerDevelopment || planImageAllowed(usage.plan) ? (
             <s-text tone="subdued">
               AI images this month: {usage.aiImageUsed} / {usage.aiImageMonthlyLimit}
             </s-text>
@@ -1242,8 +1257,8 @@ export default function ProductPage() {
               background="subdued"
             >
               <s-text tone="critical">
-                AI image generation requires the AI Image plan ({AI_IMAGE_PLAN_LABEL},{" "}
-                {AI_IMAGE_MONTHLY_INCLUDED} images/month) or the bundle with SEO Pro.
+                AI image generation requires the SEO Pro + AI Image plan ({AI_IMAGE_PLAN_LABEL},{" "}
+                {AI_IMAGE_MONTHLY_INCLUDED} images/month).
               </s-text>
               <div style={{ marginTop: "0.5rem" }}>
                 <EmbeddedNavLink

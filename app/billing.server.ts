@@ -5,7 +5,7 @@ import {
   SEO_PLAN_USD_PER_MONTH,
 } from "./pricing";
 
-export type BillingPlanChoice = "seo" | "image" | "seo_image";
+export type BillingPlanChoice = "seo" | "seo_image";
 
 const ACTIVE_SUBS_QUERY = `#graphql
   query BillingActiveSubscriptions {
@@ -55,7 +55,8 @@ function derivePlanFromActiveSubscriptions(data: unknown): string {
 
   if (hasSeo && hasImage) return "seo_image";
   if (hasSeo) return "seo";
-  if (hasImage) return "image";
+  // Current catalog uses $25 as the combined SEO Pro + AI Image plan.
+  if (hasImage) return "seo_image";
   return "free";
 }
 
@@ -82,50 +83,53 @@ export function billingChargesAreTest(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
+const SHOP_PLAN_QUERY = `#graphql
+  query BillingShopPlan {
+    shop {
+      plan {
+        partnerDevelopment
+      }
+    }
+  }
+`;
+
+/** True when the current shop is a Shopify Partner development store. */
+export async function isPartnerDevelopmentStore(
+  admin: AdminApiContext,
+): Promise<boolean> {
+  const response = await admin.graphql(SHOP_PLAN_QUERY);
+  const json = await response.json();
+  return Boolean(json.data?.shop?.plan?.partnerDevelopment);
+}
+
 function lineItemsForChoice(choice: BillingPlanChoice) {
-  const items: Array<{
+  const item: {
     plan: {
       appRecurringPricingDetails: {
         price: { amount: number; currencyCode: string };
         interval: "EVERY_30_DAYS";
       };
     };
-  }> = [];
-
-  if (choice === "seo" || choice === "seo_image") {
-    items.push({
-      plan: {
-        appRecurringPricingDetails: {
-          price: {
-            amount: SEO_PLAN_USD_PER_MONTH,
-            currencyCode: "USD",
-          },
-          interval: "EVERY_30_DAYS",
+  } = {
+    plan: {
+      appRecurringPricingDetails: {
+        price: {
+          amount:
+            choice === "seo"
+              ? SEO_PLAN_USD_PER_MONTH
+              : AI_IMAGE_PLAN_USD_PER_MONTH,
+          currencyCode: "USD",
         },
+        interval: "EVERY_30_DAYS",
       },
-    });
-  }
+    },
+  };
 
-  if (choice === "image" || choice === "seo_image") {
-    items.push({
-      plan: {
-        appRecurringPricingDetails: {
-          price: {
-            amount: AI_IMAGE_PLAN_USD_PER_MONTH,
-            currencyCode: "USD",
-          },
-          interval: "EVERY_30_DAYS",
-        },
-      },
-    });
-  }
-
-  return items;
+  return [item];
 }
 
 function subscriptionName(choice: BillingPlanChoice): string {
   if (choice === "seo_image") return "Image SEO Optimizer — SEO Pro + AI Image";
-  if (choice === "image") return "Image SEO Optimizer — AI Image";
   return "Image SEO Optimizer — SEO Pro";
 }
 

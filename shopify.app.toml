@@ -2,7 +2,7 @@
 
 client_id = "3b46a7d5b955f46d2298724437e64a02"
 name = "ai-product-descriptions-seo"
-application_url = "https://seoi.in"
+application_url = "https://seoi.in/"
 embedded = true
 
 [build]
@@ -13,10 +13,6 @@ include_config_on_deploy = true
 api_version = "2026-04"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
-
-  [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
@@ -24,11 +20,15 @@ api_version = "2026-04"
   topics = [ "app_subscriptions/update" ]
   uri = "/webhooks/app/subscriptions/update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_inventory,write_inventory,read_locations"
-
-
+scopes = "write_inventory,read_inventory,read_locations,read_products,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://seoi.in/auth/callback" ]
