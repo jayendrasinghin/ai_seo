@@ -31,7 +31,7 @@ function supportMessageDelegate() {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
   const delegate = supportMessageDelegate();
@@ -53,7 +53,62 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
     : [];
 
-  return { shop, recent, clientStale: !delegate };
+  let shopEmailHint = "";
+  let shopPhoneHint = "";
+  try {
+    const res = await admin.graphql(
+      `#graphql
+        query SupportShopContact {
+          shop {
+            email
+            contactEmail
+            billingAddress {
+              phone
+            }
+          }
+        }`,
+    );
+    const json = (await res.json()) as {
+      data?: {
+        shop?: {
+          email?: string | null;
+          contactEmail?: string | null;
+          billingAddress?: { phone?: string | null } | null;
+        } | null;
+      };
+      errors?: { message: string }[];
+    };
+    if (!json.errors?.length && json.data?.shop) {
+      const s = json.data.shop;
+      shopEmailHint = (s.contactEmail || s.email || "").trim();
+      const rawPhone = (s.billingAddress?.phone || "").trim();
+      shopPhoneHint = rawPhone.slice(0, 32);
+    }
+  } catch {
+    /* optional hints only */
+  }
+
+  const sessionRow = await prisma.session.findUnique({
+    where: { id: session.id },
+    select: { email: true },
+  });
+  const sessionEmail = sessionRow?.email?.trim() ?? "";
+  const lastContact = recent[0];
+  const defaultContactEmail =
+    shopEmailHint ||
+    sessionEmail ||
+    (lastContact?.contactEmail?.trim() ?? "") ||
+    "";
+  const defaultWhatsapp =
+    shopPhoneHint || (lastContact?.whatsapp?.trim() ?? "") || "";
+
+  return {
+    shop,
+    recent,
+    clientStale: !delegate,
+    defaultContactEmail,
+    defaultWhatsapp,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -133,7 +188,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SupportPage() {
-  const { recent, clientStale } = useLoaderData<typeof loader>();
+  const { recent, clientStale, defaultContactEmail, defaultWhatsapp } =
+    useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
   const ok = fetcher.data?.status === "ok";
@@ -172,13 +228,15 @@ export default function SupportPage() {
               <label style={{ display: "block" }}>
                 <s-text font-weight="bold">Your email (optional)</s-text>
                 <s-text tone="neutral">
-                  We can reply to this address. Leave blank if you prefer we
-                  use your Shopify account contact only.
+                  We can reply to this address. Pre-filled from your shop or
+                  account when available — edit or clear as you like. Leave blank
+                  if you prefer we use your Shopify account contact only.
                 </s-text>
                 <input
                   name="contactEmail"
                   type="email"
                   autoComplete="email"
+                  defaultValue={defaultContactEmail}
                   placeholder="you@example.com"
                   disabled={clientStale}
                   style={{
@@ -193,12 +251,14 @@ export default function SupportPage() {
               <label style={{ display: "block" }}>
                 <s-text font-weight="bold">WhatsApp (optional)</s-text>
                 <s-text tone="neutral">
-                  Include country code, e.g. +1 555 123 4567
+                  Include country code, e.g. +1 555 123 4567. Pre-filled from
+                  your shop billing phone when Shopify provides it.
                 </s-text>
                 <input
                   name="whatsapp"
                   type="tel"
                   autoComplete="tel"
+                  defaultValue={defaultWhatsapp}
                   placeholder="+1…"
                   maxLength={32}
                   disabled={clientStale}

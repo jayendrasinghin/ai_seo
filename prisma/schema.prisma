@@ -101,3 +101,26 @@ model SupportMessage {
 
   @@index([shop, createdAt(sort: Desc)])
 }
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions AdminSession[]
+}
+
+model AdminSession {
+  id           String    @id @default(cuid())
+  adminUserId  String
+  adminUser    AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  tokenHash    String
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([adminUserId, expiresAt])
+}
