@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import {
   Form,
+  isRouteErrorResponse,
   redirect,
   useFetcher,
   useLoaderData,
   useLocation,
+  useRouteError,
 } from "react-router";
 import {
   adminSessionCookie,
@@ -275,6 +277,27 @@ export default function AdminIndexPage() {
         </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const isDisabled404 =
+    isRouteErrorResponse(error) &&
+    error.status === 404 &&
+    error.data === "Not found";
+
+  return (
+    <div style={{ maxWidth: 560, margin: "4rem auto", padding: "1rem" }}>
+      <h1 style={{ marginBottom: "0.5rem" }}>
+        {isDisabled404 ? "Admin panel is disabled" : "Unable to open admin dashboard"}
+      </h1>
+      <p style={{ marginTop: 0, color: "#555" }}>
+        {isDisabled404
+          ? "Set ADMIN_PANEL_ENABLED=true in your environment, restart the app with updated env, then open /admin again."
+          : "Please try again. If this keeps happening, check server logs for the exact error."}
+      </p>
     </div>
   );
 }

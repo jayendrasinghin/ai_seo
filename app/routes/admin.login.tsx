@@ -1,5 +1,11 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, redirect, useActionData } from "react-router";
+import {
+  Form,
+  isRouteErrorResponse,
+  redirect,
+  useActionData,
+  useRouteError,
+} from "react-router";
 import {
   adminPanelEnabled,
   adminSessionCookie,
@@ -49,6 +55,27 @@ export default function AdminLoginPage() {
           ) : null}
         </div>
       </Form>
+    </div>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const isDisabled404 =
+    isRouteErrorResponse(error) &&
+    error.status === 404 &&
+    error.data === "Not found";
+
+  return (
+    <div style={{ maxWidth: 560, margin: "4rem auto", padding: "1rem" }}>
+      <h1 style={{ marginBottom: "0.5rem" }}>
+        {isDisabled404 ? "Admin panel is disabled" : "Unable to open admin login"}
+      </h1>
+      <p style={{ marginTop: 0, color: "#555" }}>
+        {isDisabled404
+          ? "Set ADMIN_PANEL_ENABLED=true in your environment, restart the app, then open /admin/login again."
+          : "Please try again. If this keeps happening, check server logs for the exact error."}
+      </p>
     </div>
   );
 }
