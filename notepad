@@ -4,6 +4,9 @@ ssh root@159.223.197.194 -i ~/webkey
 npm run build
 npm start
 
+pm2 restart 1 --update-env
+
+
 grep SHOPIFY_APP_URL ~/ai_seo/.env
 export SHOPIFY_APP_URL=https://seoi.in
 

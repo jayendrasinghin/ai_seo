@@ -1093,9 +1093,9 @@ export default function ProductPage() {
         <s-stack direction="block" gap="base">
           <s-text tone="neutral">
             Create a new product photo with AI and attach it to this product. The{" "}
-            <strong>AI Image</strong> plan is {AI_IMAGE_PLAN_LABEL} and includes up to{" "}
-            {AI_IMAGE_MONTHLY_INCLUDED} AI-generated images per billing month (not included
-            in the free SEO trial). Top-up packs can be offered for extra images.
+            <strong>AI Image</strong> plan includes up to {AI_IMAGE_MONTHLY_INCLUDED}{" "}
+            AI-generated images per billing month. Top-up packs can be offered for
+            extra images.
           </s-text>
 
           {(isGeneratingImage || isApplyingAiImage) && (
