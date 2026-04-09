@@ -588,7 +588,6 @@ export default function Index() {
         <s-section>
           <s-text tone="subdued">
             AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
-            {usage.plan === "free" ? " (Free trial)" : " (Paid plan)"}
           </s-text>
         </s-section>
 

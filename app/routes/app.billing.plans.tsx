@@ -149,7 +149,7 @@ export default function BillingPlansPage() {
             <s-text>
               <strong>Plan:</strong>{" "}
               {plan === "free"
-                ? "Free (100 combined AI SEO + image generations)"
+                ? "Includes 100 combined AI SEO + image generations"
                 : plan === "seo"
                   ? `AI SEO Pro (${SEO_PLAN_LABEL}) — unlimited AI SEO`
                   : plan === "seo_image"

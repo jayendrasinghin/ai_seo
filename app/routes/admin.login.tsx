@@ -16,7 +16,14 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!adminPanelEnabled()) throw new Response("Not found", { status: 404 });
   const cookieHeader = request.headers.get("Cookie");
-  const token = await adminSessionCookie.parse(cookieHeader);
+  let token: string | null = null;
+  try {
+    const parsed = await adminSessionCookie.parse(cookieHeader);
+    token = typeof parsed === "string" ? parsed : null;
+  } catch {
+    // Ignore malformed/stale cookies and continue to login screen.
+    token = null;
+  }
   if (token) throw redirect("/admin");
   return null;
 };

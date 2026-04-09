@@ -878,15 +878,13 @@ export default function ProductPage() {
         <s-stack direction="block" gap="base">
           <s-text tone="subdued">
             AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
-            {usage.plan === "free"
-              ? " (Free trial)"
-              : usage.plan === "seo_image"
+            {usage.plan === "seo_image"
                 ? " (SEO Pro + AI Image)"
                 : usage.plan === "seo"
                   ? " (SEO Pro)"
                   : usage.plan === "image"
                     ? " (SEO Pro + AI Image)"
-                    : " (Paid plan)"}
+                    : ""}
           </s-text>
           {usage.partnerDevelopment ? (
             <s-text tone="subdued">
