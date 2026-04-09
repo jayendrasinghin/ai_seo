@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "3b46a7d5b955f46d2298724437e64a02"
-name = "ai-product-descriptions-seo"
+name = "Seoi AI SEO & Image Optimize"
 application_url = "https://seoi.in/"
 embedded = true
 
