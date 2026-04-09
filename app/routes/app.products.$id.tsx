@@ -1092,10 +1092,7 @@ export default function ProductPage() {
       <s-section heading="Generate Image AI">
         <s-stack direction="block" gap="base">
           <s-text tone="neutral">
-            Create a new product photo with AI and attach it to this product. The{" "}
-            <strong>AI Image</strong> plan includes up to {AI_IMAGE_MONTHLY_INCLUDED}{" "}
-            AI-generated images per billing month. Top-up packs can be offered for
-            extra images.
+            Create a new product photo with AI and attach it to this product.
           </s-text>
 
           {(isGeneratingImage || isApplyingAiImage) && (
