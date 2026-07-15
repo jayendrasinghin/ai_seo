@@ -91,24 +91,135 @@ ${plainDescription || "(no current description provided)"}
 
 export async function generateProductImage(input: {
   title: string;
-}): Promise<{ imageUrl: string }> {
+}): Promise<{ imageUrl?: string; imageBase64?: string }> {
   const name = (input.title || "Product").trim().slice(0, 200);
   const prompt = `Professional ecommerce product photograph, clean white or neutral studio background, soft commercial lighting, centered composition, ${name}, sharp focus, high-end catalog style, no text or watermarks on the image.`;
 
+  // dall-e-3 was removed from the OpenAI API (2026). Use GPT Image models.
+  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+
   const result = await openai.images.generate({
-    model: "dall-e-3",
+    model,
     prompt,
     n: 1,
     size: "1024x1024",
-    quality: "standard",
+    quality: "medium",
   });
 
-  const imageUrl = result.data?.[0]?.url;
-  if (!imageUrl) {
-    throw new Error("No image URL returned from the image model.");
+  const imageUrl = result.data?.[0]?.url ?? undefined;
+  const imageBase64 = result.data?.[0]?.b64_json ?? undefined;
+
+  if (!imageUrl && !imageBase64) {
+    throw new Error("No image returned from the image model.");
   }
 
-  return { imageUrl };
+  return { imageUrl, imageBase64 };
+}
+
+/**
+ * Upload AI image bytes to Shopify staged uploads and return a resource URL
+ * suitable for productCreateMedia.originalSource.
+ */
+export async function uploadImageBytesToShopify(
+  admin: {
+    graphql: (
+      query: string,
+      options?: { variables?: Record<string, unknown> },
+    ) => Promise<Response>;
+  },
+  bytes: Buffer,
+  filename: string,
+  mimeType = "image/png",
+): Promise<string> {
+  const staged = await admin.graphql(
+    `#graphql
+      mutation AiImageStagedUpload($input: [StagedUploadInput!]!) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters { name value }
+          }
+          userErrors { field message }
+        }
+      }`,
+    {
+      variables: {
+        input: [
+          {
+            filename,
+            mimeType,
+            httpMethod: "POST",
+            resource: "IMAGE",
+            fileSize: String(bytes.length),
+          },
+        ],
+      },
+    },
+  );
+
+  const stagedJson = (await staged.json()) as {
+    data?: {
+      stagedUploadsCreate?: {
+        stagedTargets?: Array<{
+          url?: string;
+          resourceUrl?: string;
+          parameters?: Array<{ name: string; value: string }>;
+        }>;
+        userErrors?: Array<{ message?: string }>;
+      };
+    };
+  };
+
+  const errors = stagedJson.data?.stagedUploadsCreate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(errors.map((e) => e.message).filter(Boolean).join(" "));
+  }
+
+  const target = stagedJson.data?.stagedUploadsCreate?.stagedTargets?.[0];
+  if (!target?.url || !target.resourceUrl) {
+    throw new Error("Staged upload target missing.");
+  }
+
+  const form = new FormData();
+  for (const param of target.parameters ?? []) {
+    form.append(param.name, param.value);
+  }
+  form.append(
+    "file",
+    new File([new Uint8Array(bytes)], filename, { type: mimeType }),
+  );
+
+  const uploadRes = await fetch(target.url, { method: "POST", body: form });
+  if (!uploadRes.ok) {
+    throw new Error(`Upload to Shopify failed (HTTP ${uploadRes.status}).`);
+  }
+
+  return target.resourceUrl;
+}
+
+export async function resolveAiImageSource(
+  admin: {
+    graphql: (
+      query: string,
+      options?: { variables?: Record<string, unknown> },
+    ) => Promise<Response>;
+  },
+  image: { imageUrl?: string; imageBase64?: string },
+): Promise<string> {
+  if (image.imageUrl?.startsWith("http")) {
+    return image.imageUrl;
+  }
+  if (image.imageBase64) {
+    const bytes = Buffer.from(image.imageBase64, "base64");
+    return uploadImageBytesToShopify(
+      admin,
+      bytes,
+      `seoi-ai-${Date.now()}.png`,
+      "image/png",
+    );
+  }
+  throw new Error("Missing AI image data.");
 }
 
 export async function generateImageAltText(input: {

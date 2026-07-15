@@ -10,7 +10,7 @@ import { EmbeddedNavLink } from "../embedded-nav-link";
 import { productGidFromRouteParam, productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { generateProductCopy, generateProductImage } from "../ai.server";
+import { generateProductCopy, generateProductImage, resolveAiImageSource } from "../ai.server";
 import {
   AI_IMAGE_MONTHLY_INCLUDED,
   AI_IMAGE_PLAN_LABEL,
@@ -345,7 +345,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     let imageUrl: string;
     try {
-      ({ imageUrl } = await generateProductImage({ title: productTitle }));
+      const generated = await generateProductImage({ title: productTitle });
+      imageUrl = await resolveAiImageSource(admin, generated);
     } catch (error) {
       return {
         status: "ai_image_error" as const,
