@@ -2,6 +2,8 @@ import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import prisma from "./db.server";
 import {
   AI_IMAGE_PLAN_USD_PER_MONTH,
+  LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH,
+  LEGACY_SEO_PLAN_USD_PER_MONTH,
   SEO_PLAN_USD_PER_MONTH,
 } from "./pricing";
 
@@ -33,6 +35,20 @@ function amountMatchesPlan(amountStr: string, usd: number): boolean {
   return Math.abs(n - usd) < 0.01;
 }
 
+function amountMatchesSeo(amountStr: string): boolean {
+  return (
+    amountMatchesPlan(amountStr, SEO_PLAN_USD_PER_MONTH) ||
+    amountMatchesPlan(amountStr, LEGACY_SEO_PLAN_USD_PER_MONTH)
+  );
+}
+
+function amountMatchesImage(amountStr: string): boolean {
+  return (
+    amountMatchesPlan(amountStr, AI_IMAGE_PLAN_USD_PER_MONTH) ||
+    amountMatchesPlan(amountStr, LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH)
+  );
+}
+
 function derivePlanFromActiveSubscriptions(data: unknown): string {
   const installation = (data as { currentAppInstallation?: { activeSubscriptions?: Array<{ status: string; lineItems?: Array<{ plan?: { pricingDetails?: { __typename?: string; price?: { amount?: string } } } }> }> } })?.currentAppInstallation;
   const subs = installation?.activeSubscriptions ?? [];
@@ -46,14 +62,14 @@ function derivePlanFromActiveSubscriptions(data: unknown): string {
       if (details?.__typename !== "AppRecurringPricing") continue;
       const amount = details.price?.amount;
       if (amount == null) continue;
-      if (amountMatchesPlan(amount, SEO_PLAN_USD_PER_MONTH)) hasSeo = true;
-      if (amountMatchesPlan(amount, AI_IMAGE_PLAN_USD_PER_MONTH)) hasImage = true;
+      if (amountMatchesSeo(amount)) hasSeo = true;
+      if (amountMatchesImage(amount)) hasImage = true;
     }
   }
 
   if (hasSeo && hasImage) return "seo_image";
   if (hasSeo) return "seo";
-  // Current catalog uses $25 as the combined SEO Pro + AI Image plan.
+  // Combined SEO + AI Image plan is priced as the image/combined line amount.
   if (hasImage) return "seo_image";
   return "free";
 }

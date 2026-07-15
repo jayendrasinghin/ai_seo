@@ -124,3 +124,141 @@ model AdminSession {
 
   @@index([adminUserId, expiresAt])
 }
+
+/// Per-shop SEO suite settings (IndexNow, sitemap, llms.txt, schema toggles).
+model SeoSettings {
+  id                 String   @id @default(cuid())
+  shop               String   @unique
+  indexNowEnabled    Boolean  @default(false)
+  /// UUID-style key used for IndexNow submissions and key file.
+  indexNowKey        String?
+  /// Auto-submit IndexNow when products are created/updated.
+  indexNowAutoPing   Boolean  @default(true)
+  /// Publish HTML sitemap at /apps/seoi/sitemap
+  sitemapEnabled     Boolean  @default(true)
+  /// Publish llms.txt at /apps/seoi/llms.txt
+  llmsTxtEnabled     Boolean  @default(true)
+  /// Optional custom llms.txt body; blank = auto-generated from catalog.
+  llmsTxtCustom      String?  @db.Text
+  /// Theme embed JSON-LD recommended; store toggle for UI messaging.
+  jsonLdEnabled      Boolean  @default(true)
+  /// When a product is deleted, create a 301 from /products/{handle}.
+  autoRedirectOnDelete Boolean @default(true)
+  /// Target for auto-redirects (path or full URL). Default /collections/all
+  autoRedirectTarget String   @default("/collections/all")
+  /// Theme speed boost preferences (UI + guidance; embed does the work).
+  lazyLoadEnabled      Boolean @default(true)
+  assetPreloadEnabled  Boolean @default(true)
+  scriptDeferEnabled   Boolean @default(true)
+  /// Image optimizer defaults
+  imageMaxWidth        Int     @default(2048)
+  imageQuality         Int     @default(80)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+/// Recent IndexNow submission log (for merchant visibility).
+model IndexNowLog {
+  id        String   @id @default(cuid())
+  shop      String
+  url       String
+  status    String
+  /// success | error
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@index([shop, createdAt(sort: Desc)])
+}
+
+/// One broken-link / HTTP status crawl for a shop.
+model LinkScanRun {
+  id            String   @id @default(cuid())
+  shop          String
+  /// pending | running | completed | failed
+  status        String   @default("pending")
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  urlsChecked   Int      @default(0)
+  brokenCount   Int      @default(0)
+  errorMessage  String?
+
+  issues BrokenLinkIssue[]
+
+  @@index([shop, startedAt(sort: Desc)])
+}
+
+/// A checked URL from a link scan (broken, error, or redirected).
+model BrokenLinkIssue {
+  id          String      @id @default(cuid())
+  shop        String
+  scanRunId   String
+  scanRun     LinkScanRun @relation(fields: [scanRunId], references: [id], onDelete: Cascade)
+
+  sourceType  String
+  /// product | collection | page | other
+  sourceId    String?
+  sourceTitle String?
+  sourceUrl   String?
+  linkUrl     String
+  /// broken | error | redirect | ok (ok usually not stored)
+  status      String
+  httpStatus  Int?
+  finalUrl    String?
+  /// When a redirect was created from this issue
+  redirectCreated Boolean @default(false)
+
+  createdAt   DateTime @default(now())
+
+  @@index([shop, scanRunId])
+  @@index([shop, status])
+}
+
+/// Log of auto 301s created when products were deleted.
+model ProductDeleteRedirect {
+  id        String   @id @default(cuid())
+  shop      String
+  handle    String
+  path      String
+  target    String
+  createdAt DateTime @default(now())
+
+  @@index([shop, createdAt(sort: Desc)])
+}
+
+/// Product image compression / resize job log.
+model ImageOptimizeRun {
+  id              String   @id @default(cuid())
+  shop            String
+  /// pending | running | completed | failed
+  status          String   @default("pending")
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  imagesChecked   Int      @default(0)
+  imagesOptimized Int      @default(0)
+  bytesSaved      Int      @default(0)
+  errorMessage    String?
+
+  items ImageOptimizeItem[]
+
+  @@index([shop, startedAt(sort: Desc)])
+}
+
+model ImageOptimizeItem {
+  id            String           @id @default(cuid())
+  shop          String
+  runId         String
+  run           ImageOptimizeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  productId     String
+  productTitle  String?
+  mediaId       String
+  originalUrl   String?
+  originalBytes Int?
+  newBytes      Int?
+  /// optimized | skipped | error
+  status        String
+  message       String?
+  createdAt     DateTime @default(now())
+
+  @@index([shop, runId])
+  @@index([shop, mediaId])
+}

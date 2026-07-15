@@ -1,0 +1,48 @@
+{% comment %}
+  Seoi Speed Boost — lazy load, preload hints, soft script defer.
+  Enable in Theme editor → App embeds → Speed Boost.
+{% endcomment %}
+
+{%- if block.settings.enable_speed_boost -%}
+<script>
+  window.__SEOI_SPEED__ = {
+    lazyLoad: {{ block.settings.enable_lazy_load | json }},
+    preload: {{ block.settings.enable_preload | json }},
+    deferThirdParty: {{ block.settings.enable_script_defer | json }}
+  };
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Speed Boost",
+  "target": "body",
+  "javascript": "seoi-speed.js",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_speed_boost",
+      "label": "Enable Seoi Speed Boost",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_lazy_load",
+      "label": "Lazy-load below-fold images",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_preload",
+      "label": "Preload hero image + DNS prefetch",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_script_defer",
+      "label": "Defer known third-party scripts",
+      "default": true
+    }
+  ]
+}
+{% endschema %}

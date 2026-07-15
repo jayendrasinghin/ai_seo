@@ -1,4 +1,101 @@
-ssh root@64.227.159.135 -i ~/webkey
+App Store listing pricing copy
+
+SEO Pro — $9/month
+Optimize product SEO content with AI, faster and at scale.
+Best for stores focused on ranking more product pages.
+
+SEO Pro + AI Image — $25/month
+Everything in SEO Pro, plus AI image generation (up to 40 images/month).
+Best for stores that want both SEO and creative image workflows.
+
+Free to start
+Includes 100 combined AI actions so you can test results before upgrading.
+
+In-app billing page copy
+
+Current plan
+See your active plan and usage in one place.
+
+SEO Pro ($9/month)
+Unlimited AI SEO text optimization for product workflows.
+
+SEO Pro + AI Image ($25/month)
+Unlimited AI SEO + 40 AI images per month.
+
+Free trial usage
+New stores get 100 combined AI actions.
+
+One-line comparison text
+
+Need only SEO improvements? Choose SEO Pro.
+Need SEO + image generation? Choose SEO Pro + AI Image.
+“Most popular” badge suggestion
+
+Use on SEO Pro + AI Image:
+
+Most popular
+Best value
+For growth stores
+
+
+
+SEO Pro — $9/mo
+Unlimited AI SEO optimization.
+
+SEO + AI Image — $25/mo
+Unlimited AI SEO + 40 AI images/month.
+
+Free to start
+100 combined AI actions included.
+
+Very short screenshot/video overlay version
+
+SEO Pro: $9/mo
+SEO + AI Image: $25/mo
+Start free: 100 AI actions
+CTA lines (pick one)
+
+Start free, upgrade when ready
+Choose a plan in under 30 seconds
+Get better product SEO in minutes
+
+
+
+App subtitle / short description AI SEO and image optimization for Shopify products in minutes.
+
+Detailed description Seoi AI SEO & Image Optimize helps Shopify merchants improve product SEO faster with AI.
+
+Use Seoi to:
+
+Scan product images for missing, short, and duplicate alt text
+Generate AI alt text suggestions in bulk
+Apply optimized alt text directly to products
+Improve product content workflows and save manual time
+Designed for busy merchants who want better product discoverability without complex setup.
+
+Pricing section text (if description field for pricing exists) Free to start with 100 combined AI actions.
+
+SEO Pro — $9/month
+Unlimited AI SEO optimization for product workflows.
+
+SEO Pro + AI Image — $25/month
+Everything in SEO Pro, plus up to 40 AI images per month.
+
+Support text Need help? Contact support and we’ll help you get set up quickly.
+
+
+
+login email - jayendra.singh.in@gmail.com
+pwd - Jayendra@8098
+
+
+https://apps.shopify.com/ai-product-descriptions-seo
+
+
+
+
+
+
 ssh root@159.223.197.194 -i ~/webkey
 
 npm run build
@@ -24,6 +121,7 @@ sudo -u postgres psql
 DROP DATABASE ai_product_desc;
 DROP USER ai_product_descuser;
 
+
 CREATE DATABASE ai_product_desc;
 CREATE USER ai_product_descuser WITH PASSWORD 'myaiprod2023';
 grant all privileges on database ai_product_desc to ai_product_descuser ;
@@ -34,6 +132,7 @@ npx prisma migrate deploy
 
 
 jayendra.singh.in@gmail.com
+google a/c
 
 https://platform.openai.com/welcome?step=try
 

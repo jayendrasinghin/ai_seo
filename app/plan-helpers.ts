@@ -17,3 +17,11 @@ export function planImageAllowed(plan: string): boolean {
 export function planSeoUsesFreeQuota(plan: string): boolean {
   return !planSeoUnlimited(plan);
 }
+
+/**
+ * Phase 1 SEO suite (IndexNow, redirects, schema, sitemap, llms.txt)
+ * unlocks on any paid plan. Free can view settings but mutations are blocked.
+ */
+export function planHasSeoSuite(plan: string): boolean {
+  return plan === "seo" || plan === "image" || plan === "seo_image";
+}

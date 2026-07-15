@@ -532,7 +532,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   if (intent === "apply") {
-    const { admin } = await authenticate.admin(request);
+    const { admin, session } = await authenticate.admin(request);
     const decodedId = productGidFromRouteParam(params.id);
 
     if (!decodedId) return null;
@@ -556,6 +556,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               seo: { title: $seoTitle, description: $seoDescription }
             }
           ) {
+            product {
+              handle
+              onlineStoreUrl
+            }
             userErrors {
               field
               message
@@ -580,6 +584,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     if (userErrors.length > 0) {
       return { status: "error" as const, userErrors, applySource };
+    }
+
+    try {
+      const { maybeAutoPingProductUrl, buildProductOnlineStoreUrl } =
+        await import("../indexnow.server");
+      const product = json.data?.productUpdate?.product as
+        | { handle?: string; onlineStoreUrl?: string | null }
+        | undefined;
+      const pingUrl =
+        product?.onlineStoreUrl ||
+        (await buildProductOnlineStoreUrl(
+          session.shop,
+          product?.handle,
+          admin,
+        ));
+      await maybeAutoPingProductUrl(session.shop, pingUrl);
+    } catch (error) {
+      console.error("IndexNow ping after SEO apply failed", error);
     }
 
     return { status: "applied" as const, applySource };

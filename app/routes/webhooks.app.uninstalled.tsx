@@ -13,5 +13,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.session.deleteMany({ where: { shop } });
   }
 
+  await db.indexNowLog.deleteMany({ where: { shop } });
+  await db.brokenLinkIssue.deleteMany({ where: { shop } });
+  await db.linkScanRun.deleteMany({ where: { shop } });
+  await db.productDeleteRedirect.deleteMany({ where: { shop } });
+  await db.imageOptimizeItem.deleteMany({ where: { shop } });
+  await db.imageOptimizeRun.deleteMany({ where: { shop } });
+  await db.seoSettings.deleteMany({ where: { shop } });
+  await db.imageSeoIssue.deleteMany({ where: { shop } });
+  await db.imageScanRun.deleteMany({ where: { shop } });
+  await db.storeUsage.deleteMany({ where: { shop } });
+  await db.supportMessage.deleteMany({ where: { shop } });
+
   return new Response();
 };

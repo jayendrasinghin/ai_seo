@@ -26,6 +26,9 @@ export default function App() {
         <s-link href={withEmbeddedSearch("/app/products", search)}>
           Product Tools
         </s-link>
+        <s-link href={withEmbeddedSearch("/app/seo", search)}>
+          SEO Suite
+        </s-link>
         <s-link href={withEmbeddedSearch("/app/manage", search)}>
           Stock &amp; New Product
         </s-link>

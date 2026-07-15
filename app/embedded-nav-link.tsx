@@ -13,17 +13,74 @@ export type EmbeddedNavLinkProps = {
   children: ReactNode;
   style?: CSSProperties;
   className?: string;
+  /**
+   * - `link` (default): text-looking control for inline use
+   * - `button`: primary filled control so CTAs look clickable
+   * - `secondary`: outlined control
+   */
+  variant?: "link" | "button" | "secondary";
 };
 
-const buttonReset: CSSProperties = {
+const baseReset: CSSProperties = {
   cursor: "pointer",
-  border: "none",
-  background: "none",
-  padding: 0,
-  margin: 0,
   font: "inherit",
   textAlign: "inherit",
-  color: "inherit",
+  margin: 0,
+};
+
+const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSProperties> = {
+  link: {
+    border: "none",
+    background: "none",
+    padding: 0,
+    color: "#2563eb",
+    textDecoration: "underline",
+    fontWeight: 600,
+  },
+  button: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+    boxSizing: "border-box",
+    width: "fit-content",
+    maxWidth: "fit-content",
+    height: "28px",
+    minHeight: "28px",
+    maxHeight: "28px",
+    padding: "0 10px",
+    borderRadius: 6,
+    fontWeight: 600,
+    fontSize: "12px",
+    lineHeight: "28px",
+    textDecoration: "none",
+    backgroundColor: "#2563eb",
+    border: "1px solid #1d4ed8",
+    color: "#ffffff",
+    whiteSpace: "nowrap",
+  },
+  secondary: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+    boxSizing: "border-box",
+    width: "fit-content",
+    maxWidth: "fit-content",
+    height: "28px",
+    minHeight: "28px",
+    maxHeight: "28px",
+    padding: "0 10px",
+    borderRadius: 6,
+    fontWeight: 600,
+    fontSize: "12px",
+    lineHeight: "28px",
+    textDecoration: "none",
+    backgroundColor: "#ffffff",
+    border: "1px solid #c9cccf",
+    color: "#202223",
+    whiteSpace: "nowrap",
+  },
 };
 
 /**
@@ -37,6 +94,7 @@ export function EmbeddedNavLink({
   children,
   style,
   className,
+  variant = "link",
 }: EmbeddedNavLinkProps) {
   const { search: locationSearch } = useLocation();
   const search = searchProp ?? locationSearch;
@@ -55,7 +113,7 @@ export function EmbeddedNavLink({
     <button
       type="button"
       className={className}
-      style={{ ...buttonReset, ...style }}
+      style={{ ...baseReset, ...variantStyles[variant], ...style }}
       onClick={handleClick}
     >
       {children}

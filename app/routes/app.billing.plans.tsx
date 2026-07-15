@@ -118,6 +118,12 @@ export default function BillingPlansPage() {
           <div style={{ marginTop: "1rem" }}>
             <s-stack direction="block" gap="base">
               <s-text tone="subdued">
+                Paid plans: SEO Pro ({SEO_PLAN_LABEL}) — unlimited AI SEO; SEO Pro + AI Image (
+                {AI_IMAGE_PLAN_LABEL}) — unlimited SEO + {AI_IMAGE_MONTHLY_INCLUDED} images/mo.
+                Paid plans also unlock the SEO Suite (IndexNow, redirects, schema, sitemap, speed,
+                image optimize).
+              </s-text>
+              <s-text tone="subdued">
                 To switch plans, open your app listing in Shopify and choose a managed pricing
                 plan there.
               </s-text>
