@@ -12,9 +12,14 @@ import {
   syncStoreUsagePlanFromShopify,
 } from "../billing.server";
 import {
-  AI_IMAGE_PLAN_LABEL,
   AI_IMAGE_MONTHLY_INCLUDED,
+  AI_IMAGE_PLAN_LABEL,
+  FREE_AI_SEO_MONTHLY,
+  FREE_PLAN_NAME,
+  PLAN_FEATURES,
+  PRO_PLAN_NAME,
   SEO_PLAN_LABEL,
+  STARTER_PLAN_NAME,
 } from "../pricing";
 import { planImageAllowed, planSeoUnlimited } from "../plan-helpers";
 import { withEmbeddedSearch } from "../embedded-nav";
@@ -40,6 +45,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     partnerDevelopment,
   };
 };
+
+function currentPlanLabel(plan: string): string {
+  if (plan === "free") {
+    return `${FREE_PLAN_NAME} — ${FREE_AI_SEO_MONTHLY} AI SEO optimizations/month`;
+  }
+  if (plan === "seo") {
+    return `${STARTER_PLAN_NAME} (${SEO_PLAN_LABEL}) — unlimited AI SEO`;
+  }
+  if (plan === "seo_image") {
+    return `${PRO_PLAN_NAME} (${AI_IMAGE_PLAN_LABEL}) — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+  }
+  if (plan === "image") {
+    return `Legacy AI Image (${AI_IMAGE_PLAN_LABEL}) — ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+  }
+  return `${PRO_PLAN_NAME} — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+}
 
 export default function BillingPlansPage() {
   const { plan, billingTestMode, partnerDevelopment } = useLoaderData<typeof loader>();
@@ -88,16 +109,7 @@ export default function BillingPlansPage() {
         <s-section heading="Current plan">
           <s-stack direction="block" gap="small-200">
             <s-text>
-              <strong>Plan:</strong>{" "}
-              {plan === "free"
-                ? "Includes 100 combined AI SEO + image generations"
-                : plan === "seo"
-                  ? `AI SEO Pro (${SEO_PLAN_LABEL}) — unlimited AI SEO`
-                  : plan === "seo_image"
-                    ? `SEO Pro + AI Image (${AI_IMAGE_PLAN_LABEL}) — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`
-                    : plan === "image"
-                      ? `Legacy AI Image (${AI_IMAGE_PLAN_LABEL}) — ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`
-                    : `SEO Pro + AI Image — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`}
+              <strong>Plan:</strong> {currentPlanLabel(plan)}
             </s-text>
             {hasSeo ? (
               <s-text tone="subdued">AI SEO: unlimited (within fair use).</s-text>
@@ -110,26 +122,55 @@ export default function BillingPlansPage() {
           </s-stack>
         </s-section>
 
+        <s-section heading="Available plans">
+          <s-stack direction="block" gap="base">
+            <div>
+              <s-text>
+                <strong>Free — {FREE_PLAN_NAME}</strong>
+              </s-text>
+              <s-unordered-list>
+                {PLAN_FEATURES.free.map((line) => (
+                  <s-list-item key={line}>{line}</s-list-item>
+                ))}
+              </s-unordered-list>
+            </div>
+            <div>
+              <s-text>
+                <strong>Starter — {STARTER_PLAN_NAME}</strong> ({SEO_PLAN_LABEL}, 30-day trial)
+              </s-text>
+              <s-unordered-list>
+                {PLAN_FEATURES.starter.map((line) => (
+                  <s-list-item key={line}>{line}</s-list-item>
+                ))}
+              </s-unordered-list>
+            </div>
+            <div>
+              <s-text>
+                <strong>Pro — {PRO_PLAN_NAME}</strong> ({AI_IMAGE_PLAN_LABEL}, 30-day trial)
+              </s-text>
+              <s-unordered-list>
+                {PLAN_FEATURES.pro.map((line) => (
+                  <s-list-item key={line}>{line}</s-list-item>
+                ))}
+              </s-unordered-list>
+            </div>
+          </s-stack>
+        </s-section>
+
         <s-section heading="Managed pricing">
           <s-text tone="subdued">
-            This app now uses Shopify Managed Pricing only. Plan approval, decline, and re-approval
-            are handled by Shopify during install and reinstall flows.
+            This app uses Shopify Managed Pricing. Plan approval, decline, and re-approval are
+            handled by Shopify during install and reinstall flows.
           </s-text>
           <div style={{ marginTop: "1rem" }}>
             <s-stack direction="block" gap="base">
               <s-text tone="subdued">
-                Paid plans: SEO Pro ({SEO_PLAN_LABEL}) — unlimited AI SEO; SEO Pro + AI Image (
-                {AI_IMAGE_PLAN_LABEL}) — unlimited SEO + {AI_IMAGE_MONTHLY_INCLUDED} images/mo.
-                Paid plans also unlock the SEO Suite (IndexNow, redirects, schema, sitemap, speed,
-                image optimize).
+                To switch plans, open your app listing in Shopify and choose a managed pricing plan
+                there.
               </s-text>
               <s-text tone="subdued">
-                To switch plans, open your app listing in Shopify and choose a managed pricing
-                plan there.
-              </s-text>
-              <s-text tone="subdued">
-                If a merchant declined a charge previously, Shopify will request approval again
-                when they reinstall and select a paid plan.
+                If a merchant declined a charge previously, Shopify will request approval again when
+                they reinstall and select a paid plan.
               </s-text>
             </s-stack>
           </div>

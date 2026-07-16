@@ -2,9 +2,11 @@ import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import prisma from "./db.server";
 import {
   AI_IMAGE_PLAN_USD_PER_MONTH,
+  AI_IMAGE_PLAN_USD_PER_YEAR,
   LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH,
   LEGACY_SEO_PLAN_USD_PER_MONTH,
   SEO_PLAN_USD_PER_MONTH,
+  SEO_PLAN_USD_PER_YEAR,
 } from "./pricing";
 
 const ACTIVE_SUBS_QUERY = `#graphql
@@ -38,6 +40,7 @@ function amountMatchesPlan(amountStr: string, usd: number): boolean {
 function amountMatchesSeo(amountStr: string): boolean {
   return (
     amountMatchesPlan(amountStr, SEO_PLAN_USD_PER_MONTH) ||
+    amountMatchesPlan(amountStr, SEO_PLAN_USD_PER_YEAR) ||
     amountMatchesPlan(amountStr, LEGACY_SEO_PLAN_USD_PER_MONTH)
   );
 }
@@ -45,6 +48,7 @@ function amountMatchesSeo(amountStr: string): boolean {
 function amountMatchesImage(amountStr: string): boolean {
   return (
     amountMatchesPlan(amountStr, AI_IMAGE_PLAN_USD_PER_MONTH) ||
+    amountMatchesPlan(amountStr, AI_IMAGE_PLAN_USD_PER_YEAR) ||
     amountMatchesPlan(amountStr, LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH)
   );
 }

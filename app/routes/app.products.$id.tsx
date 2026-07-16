@@ -902,12 +902,12 @@ export default function ProductPage() {
           <s-text tone="subdued">
             AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
             {usage.plan === "seo_image"
-                ? " (SEO Pro + AI Image)"
+                ? " (SEO Pro Plus Image)"
                 : usage.plan === "seo"
-                  ? " (SEO Pro)"
+                  ? " (AI SEO Starter)"
                   : usage.plan === "image"
-                    ? " (SEO Pro + AI Image)"
-                    : ""}
+                    ? " (SEO Pro Plus Image)"
+                    : " (SEO Starter Free)"}
           </s-text>
           {usage.partnerDevelopment ? (
             <s-text tone="subdued">
@@ -982,7 +982,7 @@ export default function ProductPage() {
           {fetcher.data?.status === "quota_exceeded" && (
             <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
               <s-text tone="critical">
-                Your free AI quota is over. Upgrade to the SEO Pro plan to continue AI generation.
+                Your free AI quota is over. Upgrade to AI SEO Starter to continue AI generation.
               </s-text>
               <div style={{ marginTop: "0.5rem" }}>
                 <EmbeddedNavLink
@@ -1275,7 +1275,7 @@ export default function ProductPage() {
               background="subdued"
             >
               <s-text tone="critical">
-                AI image generation requires the SEO Pro + AI Image plan ({AI_IMAGE_PLAN_LABEL},{" "}
+                AI image generation requires SEO Pro Plus Image ({AI_IMAGE_PLAN_LABEL},{" "}
                 {AI_IMAGE_MONTHLY_INCLUDED} images/month).
               </s-text>
               <div style={{ marginTop: "0.5rem" }}>

@@ -1,9 +1,9 @@
 /**
  * StoreUsage.plan values synced from Shopify Billing (see billing.server.ts).
- * - free: no active subscription
- * - seo: SEO Pro recurring only (unlimited AI SEO vs free quota)
- * - image: AI Image recurring only (SEO still uses free quota)
- * - seo_image: both line items on one active subscription
+ * - free: SEO Starter Free (100 AI SEO / month)
+ * - seo: AI SEO Starter ($3.99/mo or $44/yr) — unlimited AI SEO + SEO Suite
+ * - image: legacy AI Image–only (treated like paid for suite unlock)
+ * - seo_image: SEO Pro Plus Image ($8.99/mo or $99/yr) — Starter + AI images
  */
 export function planSeoUnlimited(plan: string): boolean {
   return plan === "seo" || plan === "seo_image";
