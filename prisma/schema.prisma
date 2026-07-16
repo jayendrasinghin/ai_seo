@@ -37,6 +37,11 @@ model StoreUsage {
   aiImageUsed   Int      @default(0)
   freeQuotaLimit Int     @default(100)
   plan          String   @default("free")
+  /// First-99 launch offer: Starter free for 12 months (not Pro / AI images).
+  foundingMember       Boolean   @default(false)
+  foundingMemberNumber Int?
+  foundingGrantedAt    DateTime?
+  foundingExpiresAt    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

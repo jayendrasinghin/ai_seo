@@ -8,6 +8,7 @@ import { productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
+import { getEffectivePlan } from "../plan-helpers";
 
 const PAGE_SIZE = 25;
 
@@ -139,7 +140,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     q: qRaw,
     pageSize: PAGE_SIZE,
     errors: json.errors ?? null,
-    usage: { aiUsed, freeQuotaLimit: usage.freeQuotaLimit, plan: usage.plan },
+    usage: { aiUsed, freeQuotaLimit: usage.freeQuotaLimit, plan: getEffectivePlan(usage) },
   };
 };
 

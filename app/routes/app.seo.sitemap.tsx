@@ -12,7 +12,7 @@ import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
 } from "../seo-settings.server";
-import { planHasSeoSuite } from "../plan-helpers";
+import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
@@ -28,7 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const settings = await getOrCreateSeoSettings(shop);
 
   return {
-    suiteUnlocked: partnerDevelopment || planHasSeoSuite(usage.plan),
+    suiteUnlocked: partnerDevelopment || planHasSeoSuite(getEffectivePlan(usage)),
     settings: {
       sitemapEnabled: settings.sitemapEnabled,
       llmsTxtEnabled: settings.llmsTxtEnabled,
@@ -46,7 +46,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = session.shop;
   const partnerDevelopment = await isPartnerDevelopmentStore(admin);
   const usage = await prisma.storeUsage.findUnique({ where: { shop } });
-  if (!partnerDevelopment && !planHasSeoSuite(usage?.plan ?? "free")) {
+  if (!partnerDevelopment && !planHasSeoSuite(getEffectivePlan({ plan: usage?.plan ?? "free", foundingMember: usage?.foundingMember ?? false, foundingMemberNumber: usage?.foundingMemberNumber ?? null, foundingGrantedAt: usage?.foundingGrantedAt ?? null, foundingExpiresAt: usage?.foundingExpiresAt ?? null }))) {
     return { status: "error" as const, message: "Upgrade required." };
   }
 

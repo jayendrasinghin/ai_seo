@@ -10,7 +10,7 @@ import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
 } from "../seo-settings.server";
-import { planHasSeoSuite } from "../plan-helpers";
+import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
@@ -24,7 +24,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     create: { shop },
   });
   const settings = await getOrCreateSeoSettings(shop);
-  const suiteUnlocked = partnerDevelopment || planHasSeoSuite(usage.plan);
+  const effectivePlan = getEffectivePlan(usage);
+  const suiteUnlocked = partnerDevelopment || planHasSeoSuite(effectivePlan);
 
   const latestLinkScan = await prisma.linkScanRun.findFirst({
     where: { shop },
@@ -33,7 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   return {
-    plan: usage.plan,
+    plan: effectivePlan,
     suiteUnlocked,
     settings: {
       indexNowEnabled: settings.indexNowEnabled,

@@ -16,7 +16,7 @@ import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { runImageOptimizeBatch } from "../image-optimize.server";
-import { planHasSeoSuite } from "../plan-helpers";
+import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
@@ -43,7 +43,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : [];
 
   return {
-    suiteUnlocked: partnerDevelopment || planHasSeoSuite(usage.plan),
+    suiteUnlocked: partnerDevelopment || planHasSeoSuite(getEffectivePlan(usage)),
     settings: {
       imageMaxWidth: settings.imageMaxWidth,
       imageQuality: settings.imageQuality,
@@ -58,7 +58,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = session.shop;
   const partnerDevelopment = await isPartnerDevelopmentStore(admin);
   const usage = await prisma.storeUsage.findUnique({ where: { shop } });
-  if (!partnerDevelopment && !planHasSeoSuite(usage?.plan ?? "free")) {
+  if (!partnerDevelopment && !planHasSeoSuite(getEffectivePlan({ plan: usage?.plan ?? "free", foundingMember: usage?.foundingMember ?? false, foundingMemberNumber: usage?.foundingMemberNumber ?? null, foundingGrantedAt: usage?.foundingGrantedAt ?? null, foundingExpiresAt: usage?.foundingExpiresAt ?? null }))) {
     return { status: "error" as const, message: "Upgrade required." };
   }
 

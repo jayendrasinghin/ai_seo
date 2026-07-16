@@ -16,7 +16,7 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { generateImageAltText } from "../ai.server";
-import { planSeoUsesFreeQuota } from "../plan-helpers";
+import { getEffectivePlan, planSeoUsesFreeQuota } from "../plan-helpers";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
 const SHORT_ALT_MIN = 20;
@@ -195,7 +195,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
     if (
       !partnerDevelopment &&
-      planSeoUsesFreeQuota(usage.plan) &&
+      planSeoUsesFreeQuota(getEffectivePlan(usage)) &&
       totalAiUsed >= usage.freeQuotaLimit
     ) {
       return {
@@ -491,7 +491,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     usage: {
       aiUsed: usage.aiSeoUsed + usage.aiImageUsed,
       freeQuotaLimit: usage.freeQuotaLimit,
-      plan: usage.plan,
+      plan: getEffectivePlan(usage),
       partnerDevelopment,
     },
     errors: json.errors ?? null,

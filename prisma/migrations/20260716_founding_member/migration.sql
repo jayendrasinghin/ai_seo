@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "StoreUsage" ADD COLUMN IF NOT EXISTS "foundingMember" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "StoreUsage" ADD COLUMN IF NOT EXISTS "foundingMemberNumber" INTEGER;
+ALTER TABLE "StoreUsage" ADD COLUMN IF NOT EXISTS "foundingGrantedAt" TIMESTAMP(3);
+ALTER TABLE "StoreUsage" ADD COLUMN IF NOT EXISTS "foundingExpiresAt" TIMESTAMP(3);

@@ -120,13 +120,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let installedShops: Array<{
     shop: string;
     plan: string;
+    effectivePlan: string;
+    foundingMember: boolean;
+    foundingMemberNumber: number | null;
+    foundingExpiresAt: Date | null;
     aiSeoUsed: number;
     aiImageUsed: number;
     firstSeenAt: Date | null;
     lastActivityAt: Date | null;
   }> = [];
 
+  let foundingStats = { used: 0, limit: 99, remaining: 99, months: 12 };
+
   if (section === "shops") {
+    const { getFoundingOfferStats } = await import("../founding.server");
+    const { getEffectivePlan } = await import("../plan-helpers");
+    foundingStats = await getFoundingOfferStats();
+
     const installedShopRows = await prisma.session.findMany({
       distinct: ["shop"],
       select: { shop: true },
@@ -136,6 +146,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       select: {
         shop: true,
         plan: true,
+        foundingMember: true,
+        foundingMemberNumber: true,
+        foundingExpiresAt: true,
+        foundingGrantedAt: true,
         aiSeoUsed: true,
         aiImageUsed: true,
         createdAt: true,
@@ -145,9 +159,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
     installedShops = installedShopRows.map((row) => {
       const usage = usageByShop.get(row.shop);
+      const planUsage = {
+        plan: usage?.plan ?? "free",
+        foundingMember: usage?.foundingMember ?? false,
+        foundingMemberNumber: usage?.foundingMemberNumber ?? null,
+        foundingGrantedAt: usage?.foundingGrantedAt ?? null,
+        foundingExpiresAt: usage?.foundingExpiresAt ?? null,
+      };
       return {
         shop: row.shop,
-        plan: usage?.plan ?? "free",
+        plan: planUsage.plan,
+        effectivePlan: getEffectivePlan(planUsage),
+        foundingMember: planUsage.foundingMember,
+        foundingMemberNumber: planUsage.foundingMemberNumber,
+        foundingExpiresAt: planUsage.foundingExpiresAt,
         aiSeoUsed: usage?.aiSeoUsed ?? 0,
         aiImageUsed: usage?.aiImageUsed ?? 0,
         firstSeenAt: usage?.createdAt ?? null,
@@ -166,6 +191,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     counts: { open: openCount, replied: repliedCount, total: totalCount },
     messages,
     installedShops,
+    foundingStats,
   };
 };
 
@@ -535,6 +561,7 @@ export default function AdminIndexPage() {
     counts,
     messages,
     installedShops,
+    foundingStats,
   } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
@@ -684,23 +711,46 @@ export default function AdminIndexPage() {
             installedShops.length === 0 ? (
               <p className="empty">No installed shops found yet.</p>
             ) : (
-              <div className="card-grid">
-                {installedShops.map((s) => (
-                  <div key={s.shop} className="card">
-                    <div className="shop">{s.shop}</div>
-                    <p className="meta" style={{ marginTop: 6 }}>
-                      Plan: {s.plan} · AI SEO used: {s.aiSeoUsed} · AI image used:{" "}
-                      {s.aiImageUsed}
-                    </p>
-                    <p className="meta">
-                      First seen:{" "}
-                      {s.firstSeenAt ? new Date(s.firstSeenAt).toLocaleString() : "-"} · Last
-                      activity:{" "}
-                      {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleString() : "-"}
+              <>
+                <div className="stats" style={{ marginBottom: "1rem" }}>
+                  <div className="stat">
+                    <div className="label">Founding members</div>
+                    <div className="value">
+                      {foundingStats.used} / {foundingStats.limit}
+                    </div>
+                    <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                      {foundingStats.remaining} slots left · Starter free{" "}
+                      {foundingStats.months} months
                     </p>
                   </div>
-                ))}
-              </div>
+                </div>
+                <div className="card-grid">
+                  {installedShops.map((s) => (
+                    <div key={s.shop} className="card">
+                      <div className="shop">{s.shop}</div>
+                      <p className="meta" style={{ marginTop: 6 }}>
+                        Shopify plan: {s.plan} · Effective: {s.effectivePlan}
+                        {s.foundingMember
+                          ? ` · Founding #${s.foundingMemberNumber}${
+                              s.foundingExpiresAt
+                                ? ` until ${new Date(s.foundingExpiresAt).toLocaleDateString()}`
+                                : ""
+                            }`
+                          : ""}
+                      </p>
+                      <p className="meta">
+                        AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}
+                      </p>
+                      <p className="meta">
+                        First seen:{" "}
+                        {s.firstSeenAt ? new Date(s.firstSeenAt).toLocaleString() : "-"} · Last
+                        activity:{" "}
+                        {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleString() : "-"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
             )
           ) : null}
         </main>

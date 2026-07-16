@@ -1,12 +1,8 @@
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import prisma from "./db.server";
 import {
-  AI_IMAGE_PLAN_USD_PER_MONTH,
-  AI_IMAGE_PLAN_USD_PER_YEAR,
-  LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH,
-  LEGACY_SEO_PLAN_USD_PER_MONTH,
-  SEO_PLAN_USD_PER_MONTH,
-  SEO_PLAN_USD_PER_YEAR,
+  AI_IMAGE_PLAN_MATCH_AMOUNTS,
+  SEO_PLAN_MATCH_AMOUNTS,
 } from "./pricing";
 
 const ACTIVE_SUBS_QUERY = `#graphql
@@ -37,20 +33,16 @@ function amountMatchesPlan(amountStr: string, usd: number): boolean {
   return Math.abs(n - usd) < 0.01;
 }
 
+function amountMatchesAny(amountStr: string, amounts: readonly number[]): boolean {
+  return amounts.some((usd) => amountMatchesPlan(amountStr, usd));
+}
+
 function amountMatchesSeo(amountStr: string): boolean {
-  return (
-    amountMatchesPlan(amountStr, SEO_PLAN_USD_PER_MONTH) ||
-    amountMatchesPlan(amountStr, SEO_PLAN_USD_PER_YEAR) ||
-    amountMatchesPlan(amountStr, LEGACY_SEO_PLAN_USD_PER_MONTH)
-  );
+  return amountMatchesAny(amountStr, SEO_PLAN_MATCH_AMOUNTS);
 }
 
 function amountMatchesImage(amountStr: string): boolean {
-  return (
-    amountMatchesPlan(amountStr, AI_IMAGE_PLAN_USD_PER_MONTH) ||
-    amountMatchesPlan(amountStr, AI_IMAGE_PLAN_USD_PER_YEAR) ||
-    amountMatchesPlan(amountStr, LEGACY_AI_IMAGE_PLAN_USD_PER_MONTH)
-  );
+  return amountMatchesAny(amountStr, AI_IMAGE_PLAN_MATCH_AMOUNTS);
 }
 
 function derivePlanFromActiveSubscriptions(data: unknown): string {
@@ -86,6 +78,7 @@ export async function syncStoreUsagePlanFromShopify(
   const json = await response.json();
   const plan = derivePlanFromActiveSubscriptions(json.data);
 
+  // Only sync Shopify plan. Founding-member fields are never cleared here.
   await prisma.storeUsage.upsert({
     where: { shop },
     create: { shop, plan },

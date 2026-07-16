@@ -16,7 +16,7 @@ import {
   AI_IMAGE_PLAN_LABEL,
 } from "../pricing";
 import prisma from "../db.server";
-import { planImageAllowed, planSeoUsesFreeQuota } from "../plan-helpers";
+import { getEffectivePlan, planImageAllowed, planSeoUsesFreeQuota } from "../plan-helpers";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
 type LoaderProduct = {
@@ -102,7 +102,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const usagePayload = {
     aiUsed: usageRow.aiSeoUsed + usageRow.aiImageUsed,
     freeQuotaLimit: usageRow.freeQuotaLimit,
-    plan: usageRow.plan,
+    plan: getEffectivePlan(usageRow),
     partnerDevelopment,
     aiImageUsed: usageRow.aiImageUsed,
     aiImageMonthlyLimit: AI_IMAGE_MONTHLY_INCLUDED,
@@ -250,7 +250,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     if (
       !partnerDevelopment &&
       totalAiUsed >= usage.freeQuotaLimit &&
-      planSeoUsesFreeQuota(usage.plan)
+      planSeoUsesFreeQuota(getEffectivePlan(usage))
     ) {
       return { status: "quota_exceeded" as const };
     }
@@ -321,7 +321,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (!partnerDevelopment && !planImageAllowed(usage.plan)) {
+    if (!partnerDevelopment && !planImageAllowed(getEffectivePlan(usage))) {
       return { status: "image_plan_required" as const };
     }
 
@@ -448,7 +448,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       create: { shop: shopDomain },
     });
 
-    if (!partnerDevelopment && !planImageAllowed(usage.plan)) {
+    if (!partnerDevelopment && !planImageAllowed(getEffectivePlan(usage))) {
       return { status: "image_plan_required" as const };
     }
 
