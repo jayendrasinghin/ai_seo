@@ -84,6 +84,20 @@ model ImageSeoIssue {
   @@index([shop, productId])
 }
 
+/// Registered product / Shopify app shown in the support admin console.
+model SupportApp {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages SupportMessage[]
+}
+
 /// Merchant support / contact form submissions (one row per message).
 model SupportMessage {
   id            String   @id @default(cuid())
@@ -94,12 +108,19 @@ model SupportMessage {
   whatsapp      String?
   subject       String?
   message       String
-  /// App owner reply (set via /app/support-inbox); visible to the merchant on Help & support.
+  /// open | replied | closed
+  status        String   @default("open")
+  /// Which product app this ticket belongs to (nullable for legacy rows).
+  appId         String?
+  app           SupportApp? @relation(fields: [appId], references: [id], onDelete: SetNull)
+  /// App owner reply (set via /admin); visible to the merchant on Help & support.
   reply         String?
   replyAt       DateTime?
   createdAt     DateTime @default(now())
 
   @@index([shop, createdAt(sort: Desc)])
+  @@index([appId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
 }
 
 model AdminUser {
@@ -112,6 +133,7 @@ model AdminUser {
   updatedAt    DateTime @updatedAt
 
   sessions AdminSession[]
+  otpChallenges AdminOtpChallenge[]
 }
 
 model AdminSession {
@@ -120,6 +142,20 @@ model AdminSession {
   adminUser    AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
   tokenHash    String
   expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([adminUserId, expiresAt])
+}
+
+/// Short-lived email OTP for admin login (after password check).
+model AdminOtpChallenge {
+  id           String    @id @default(cuid())
+  adminUserId  String
+  adminUser    AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int       @default(0)
+  consumedAt   DateTime?
   createdAt    DateTime  @default(now())
 
   @@index([adminUserId, expiresAt])

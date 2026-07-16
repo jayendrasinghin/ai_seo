@@ -9,6 +9,7 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import type { CSSProperties } from "react";
+import { getDefaultSupportAppId } from "../admin-auth.server";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
@@ -174,6 +175,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
+  let appId: string | null = null;
+  try {
+    appId = await getDefaultSupportAppId();
+  } catch {
+    appId = null;
+  }
+
   await delegate.create({
     data: {
       shop,
@@ -181,6 +189,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       message: messageRaw,
       contactEmail,
       whatsapp,
+      status: "open",
+      ...(appId ? { appId } : {}),
     },
   });
 

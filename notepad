@@ -48,6 +48,7 @@ https://apps.shopify.com/ai-product-descriptions-seo
 ssh root@159.223.197.194 -i ~/webkey
 
 npm run build
+
 npm start
 
 pm2 restart 1 --update-env
@@ -122,3 +123,7 @@ Image paid ($25):
 AI image: allowed up to quota
 top-up available beyond quota
 This is a solid, cost-safe model for launch.
+# Admin support panel (added)
+# ADMIN_OTP_ENABLED=true
+# RESEND_API_KEY=
+# MAIL_FROM="SEOI Support <you@domain.com>"
