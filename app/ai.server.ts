@@ -91,9 +91,18 @@ ${plainDescription || "(no current description provided)"}
 
 export async function generateProductImage(input: {
   title: string;
+  background?: string | null;
+  description?: string | null;
 }): Promise<{ imageUrl?: string; imageBase64?: string }> {
   const name = (input.title || "Product").trim().slice(0, 200);
-  const prompt = `Professional ecommerce product photograph, clean white or neutral studio background, soft commercial lighting, centered composition, ${name}, sharp focus, high-end catalog style, no text or watermarks on the image.`;
+  const background = (input.background || "clean white or neutral studio background")
+    .trim()
+    .slice(0, 300);
+  const extra = (input.description || "").trim().slice(0, 800);
+  const extrasClause = extra
+    ? ` Extra creative direction: ${extra}.`
+    : "";
+  const prompt = `Professional ecommerce product photograph of ${name}. Background: ${background}. Soft commercial lighting, centered composition, sharp focus, high-end catalog style.${extrasClause} Do not invent unrelated products. Avoid unwanted watermarks unless the creative direction explicitly requests a brand logo or text.`;
 
   // dall-e-3 was removed from the OpenAI API (2026). Use GPT Image models.
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";

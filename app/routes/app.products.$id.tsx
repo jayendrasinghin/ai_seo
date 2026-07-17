@@ -4,12 +4,13 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher, useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { AiSpinner } from "../AiSpinner";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { productGidFromRouteParam, productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import { generateProductCopy, generateProductImage, resolveAiImageSource } from "../ai.server";
 import {
   AI_IMAGE_MONTHLY_INCLUDED,
@@ -19,6 +20,12 @@ import prisma from "../db.server";
 import { getEffectivePlan, planImageAllowed, planSeoUsesFreeQuota } from "../plan-helpers";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
+type ProductImageNode = {
+  id: string;
+  url: string;
+  altText: string | null;
+};
+
 type LoaderProduct = {
   id: string;
   title: string;
@@ -27,11 +34,7 @@ type LoaderProduct = {
   availableStockSum: number | null;
   descriptionHtml: string | null;
   images: {
-    nodes: Array<{
-      id: string;
-      url: string;
-      altText: string | null;
-    }>;
+    nodes: ProductImageNode[];
   } | null;
   seo: {
     title: string | null;
@@ -44,7 +47,14 @@ type ProductFromQuery = {
   title: string;
   status: string;
   descriptionHtml: string | null;
-  images: LoaderProduct["images"];
+  images?: LoaderProduct["images"];
+  media?: {
+    nodes?: Array<{
+      id?: string | null;
+      alt?: string | null;
+      image?: { url?: string | null; altText?: string | null } | null;
+    } | null>;
+  };
   seo: LoaderProduct["seo"];
   variants?: {
     nodes?: Array<{
@@ -58,6 +68,77 @@ type ProductFromQuery = {
     }>;
   };
 };
+
+function mediaNodesToImages(
+  media: ProductFromQuery["media"] | null | undefined,
+): ProductImageNode[] {
+  return (media?.nodes ?? [])
+    .filter((node): node is NonNullable<typeof node> => Boolean(node?.id && node.image?.url))
+    .map((node) => ({
+      id: node.id as string,
+      url: node.image?.url as string,
+      altText: node.alt?.trim() || node.image?.altText || null,
+    }));
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchProductImages(
+  admin: AdminApiContext,
+  productId: string,
+): Promise<ProductImageNode[]> {
+  const response = await admin.graphql(
+    `#graphql
+      query AiSeoAppProductImages($id: ID!) {
+        product(id: $id) {
+          media(first: 50) {
+            nodes {
+              ... on MediaImage {
+                id
+                alt
+                image {
+                  url
+                  altText
+                }
+              }
+            }
+          }
+        }
+      }`,
+    { variables: { id: productId } },
+  );
+  const json = (await response.json()) as {
+    data?: { product?: { media?: ProductFromQuery["media"] } };
+  };
+  return mediaNodesToImages(json.data?.product?.media);
+}
+
+async function fetchProductImagesUntilChanged(
+  admin: AdminApiContext,
+  productId: string,
+  previousCount: number,
+  options?: { expectIncrease?: boolean; attempts?: number; delayMs?: number },
+): Promise<ProductImageNode[]> {
+  const attempts = options?.attempts ?? 6;
+  const delayMs = options?.delayMs ?? 900;
+  const expectIncrease = options?.expectIncrease ?? true;
+  let images = await fetchProductImages(admin, productId);
+
+  for (let i = 0; i < attempts; i += 1) {
+    const changed = expectIncrease
+      ? images.length > previousCount
+      : images.length < previousCount;
+    if (changed || (expectIncrease && images.length >= previousCount + 1)) {
+      return images;
+    }
+    await sleep(delayMs);
+    images = await fetchProductImages(admin, productId);
+  }
+
+  return images;
+}
 
 function sumAvailableStock(product: ProductFromQuery): number {
   let sum = 0;
@@ -126,11 +207,16 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
           title
           status
           descriptionHtml
-          images(first: 50) {
+          media(first: 50) {
             nodes {
-              id
-              url
-              altText
+              ... on MediaImage {
+                id
+                alt
+                image {
+                  url
+                  altText
+                }
+              }
             }
           }
           variants(first: 50) {
@@ -200,7 +286,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
           status: rawProduct.status,
           availableStockSum: sumAvailableStock(rawProduct),
           descriptionHtml: rawProduct.descriptionHtml,
-          images: rawProduct.images,
+          images: { nodes: mediaNodesToImages(rawProduct.media) },
           seo: rawProduct.seo,
         }
       : null;
@@ -343,9 +429,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const productTitle = productJson.data?.product?.title as string | undefined;
     if (!productTitle) return null;
 
+    const background = String(formData.get("background") || "").trim().slice(0, 300);
+    const description = String(formData.get("description") || "").trim().slice(0, 800);
+    const previousImages = await fetchProductImages(admin, decodedId);
+
     let imageUrl: string;
     try {
-      const generated = await generateProductImage({ title: productTitle });
+      const generated = await generateProductImage({
+        title: productTitle,
+        background: background || undefined,
+        description: description || undefined,
+      });
       imageUrl = await resolveAiImageSource(admin, generated);
     } catch (error) {
       return {
@@ -408,21 +502,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       });
 
-      if (mediaStatuses.includes("PROCESSING")) {
-        return { status: "image_processing" as const, appliedMode: "auto" as const };
-      }
+      const images = await fetchProductImagesUntilChanged(
+        admin,
+        decodedId,
+        previousImages.length,
+        { expectIncrease: true },
+      );
 
       if (mediaStatuses.includes("FAILED")) {
         return {
           status: "ai_image_error" as const,
           message:
             "Shopify accepted the request but failed to process this image. Please try again.",
+          images,
+        };
+      }
+
+      if (mediaStatuses.includes("PROCESSING") && images.length <= previousImages.length) {
+        return {
+          status: "image_processing" as const,
+          appliedMode: "auto" as const,
+          images,
         };
       }
 
       return {
         status: "image_generated" as const,
         appliedMode: "auto" as const,
+        images,
       };
     }
 
@@ -430,6 +537,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       status: "image_preview" as const,
       imageUrl,
       productTitle,
+      images: previousImages,
     };
   }
 
@@ -465,6 +573,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         message: "Missing AI image URL. Please generate a new image.",
       };
     }
+
+    const previousImages = await fetchProductImages(admin, decodedId);
 
     const mediaResponse = await admin.graphql(
       `#graphql
@@ -522,13 +632,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       },
     });
 
-    if (mediaStatuses.includes("PROCESSING")) {
-      return { status: "image_processing" as const, appliedMode: "manual" as const };
+    const images = await fetchProductImagesUntilChanged(
+      admin,
+      decodedId,
+      previousImages.length,
+      { expectIncrease: true },
+    );
+
+    if (mediaStatuses.includes("PROCESSING") && images.length <= previousImages.length) {
+      return {
+        status: "image_processing" as const,
+        appliedMode: "manual" as const,
+        images,
+      };
     }
 
     return {
       status: "image_generated" as const,
       appliedMode: "manual" as const,
+      images,
     };
   }
 
@@ -628,6 +750,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       };
     }
 
+    const previousImages = await fetchProductImages(admin, decodedId);
+
     const response = await admin.graphql(
       `#graphql
         mutation AiSeoAddProductImages($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -668,9 +792,83 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       };
     }
 
+    const images = await fetchProductImagesUntilChanged(
+      admin,
+      decodedId,
+      previousImages.length,
+      { expectIncrease: true },
+    );
+
     return {
       status: "images_added" as const,
       addedCount: imageUrls.length,
+      images,
+    };
+  }
+
+  if (intent === "remove_image") {
+    const { admin } = await authenticate.admin(request);
+    const decodedId = productGidFromRouteParam(params.id);
+    const mediaId = String(formData.get("mediaId") || "");
+
+    if (!decodedId || !mediaId) return null;
+
+    const previousImages = await fetchProductImages(admin, decodedId);
+
+    const response = await admin.graphql(
+      `#graphql
+        mutation AiSeoDeleteProductMedia($productId: ID!, $mediaIds: [ID!]!) {
+          productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+            deletedMediaIds
+            mediaUserErrors {
+              field
+              message
+            }
+          }
+        }`,
+      {
+        variables: {
+          productId: decodedId,
+          mediaIds: [mediaId],
+        },
+      },
+    );
+
+    const json = (await response.json()) as {
+      data?: {
+        productDeleteMedia?: {
+          deletedMediaIds?: string[];
+          mediaUserErrors?: Array<{ message?: string }>;
+        };
+      };
+      errors?: Array<{ message?: string }>;
+    };
+
+    if (json.errors?.length) {
+      return {
+        status: "image_error" as const,
+        message: json.errors[0]?.message || "Could not remove image.",
+      };
+    }
+
+    const userErrors = json.data?.productDeleteMedia?.mediaUserErrors ?? [];
+    if (userErrors.length > 0) {
+      return {
+        status: "image_error" as const,
+        message: userErrors[0]?.message || "Could not remove image.",
+      };
+    }
+
+    const images = await fetchProductImagesUntilChanged(
+      admin,
+      decodedId,
+      previousImages.length,
+      { expectIncrease: false },
+    );
+
+    return {
+      status: "image_removed" as const,
+      images,
     };
   }
 
@@ -691,6 +889,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           message: "Please select at least one image file to upload.",
         };
       }
+
+      const previousImages = await fetchProductImages(admin, decodedId);
 
       const stagedResponse = await admin.graphql(
         `#graphql
@@ -795,9 +995,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         };
       }
 
+      const images = await fetchProductImagesUntilChanged(
+        admin,
+        decodedId,
+        previousImages.length,
+        { expectIncrease: true },
+      );
+
       return {
         status: "images_uploaded" as const,
         uploadedCount: uploadedResourceUrls.length,
+        images,
       };
     } catch (error) {
       return {
@@ -817,9 +1025,27 @@ export default function ProductPage() {
   const { product, otherProducts, usage, shopifyError } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const revalidator = useRevalidator();
   const uploadFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadFileCount, setUploadFileCount] = useState(0);
   const [autoAttachAiImage, setAutoAttachAiImage] = useState(false);
+  const [imageBackground, setImageBackground] = useState(
+    "Clean white studio background",
+  );
+  const [imageDescription, setImageDescription] = useState("");
+  const [displayImages, setDisplayImages] = useState<ProductImageNode[]>(
+    product?.images?.nodes ?? [],
+  );
+  const loaderImageKey = (product?.images?.nodes ?? []).map((img) => img.id).join("|");
+  const removingMediaId =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "remove_image"
+      ? String(fetcher.formData.get("mediaId") || "")
+      : "";
+
+  useEffect(() => {
+    setDisplayImages(product?.images?.nodes ?? []);
+  }, [product?.id, loaderImageKey, product?.images?.nodes]);
 
   useEffect(() => {
     if (fetcher.data?.status === "images_uploaded") {
@@ -827,6 +1053,44 @@ export default function ProductPage() {
       if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
     }
   }, [fetcher.data?.status]);
+
+  useEffect(() => {
+    const data = fetcher.data;
+    if (!data || !("images" in data) || !Array.isArray(data.images)) return;
+    setDisplayImages(data.images);
+  }, [fetcher.data]);
+
+  useEffect(() => {
+    if (fetcher.data?.status === "image_error") {
+      setDisplayImages(product?.images?.nodes ?? []);
+    }
+  }, [fetcher.data?.status, loaderImageKey, product?.images?.nodes]);
+
+  useEffect(() => {
+    const status = fetcher.data?.status;
+    if (
+      status !== "image_generated" &&
+      status !== "image_processing" &&
+      status !== "images_added" &&
+      status !== "images_uploaded" &&
+      status !== "image_removed"
+    ) {
+      return;
+    }
+
+    revalidator.revalidate();
+
+    if (status !== "image_processing") return;
+
+    const timers = [1500, 3500, 6000].map((ms) =>
+      window.setTimeout(() => {
+        revalidator.revalidate();
+      }, ms),
+    );
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [fetcher.data, revalidator]);
 
   const isUploadSubmitting =
     fetcher.state === "submitting" &&
@@ -951,26 +1215,70 @@ export default function ProductPage() {
 
         <s-stack direction="block" gap="base">
           <s-text font-weight="bold">Current images</s-text>
-          {product.images?.nodes?.length ? (
+          {displayImages.length ? (
             <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-              {product.images.nodes.map((img) => (
-                <img
+              {displayImages.map((img) => (
+                <div
                   key={img.id}
-                  src={img.url}
-                  alt={img.altText || product.title}
                   style={{
+                    position: "relative",
                     width: 72,
                     height: 72,
-                    objectFit: "cover",
-                    borderRadius: 8,
-                    border: "1px solid #ddd",
                   }}
-                />
+                >
+                  <img
+                    src={img.url}
+                    alt={img.altText || product.title}
+                    style={{
+                      width: 72,
+                      height: 72,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      display: "block",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove image"
+                    disabled={Boolean(removingMediaId)}
+                    onClick={() => {
+                      setDisplayImages((prev) =>
+                        prev.filter((image) => image.id !== img.id),
+                      );
+                      fetcher.submit(
+                        { intent: "remove_image", mediaId: img.id },
+                        { method: "post" },
+                      );
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      border: "1px solid #fecaca",
+                      background: "#fee2e2",
+                      color: "#991b1b",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      cursor: removingMediaId ? "not-allowed" : "pointer",
+                      opacity: removingMediaId === img.id ? 0.6 : 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
             <s-text tone="neutral">No images found for this product.</s-text>
           )}
+          {fetcher.data?.status === "image_removed" ? (
+            <s-text tone="success">Image removed from this product.</s-text>
+          ) : null}
 
           <s-text font-weight="bold">SEO title</s-text>
           <s-text>
@@ -1124,7 +1432,46 @@ export default function ProductPage() {
         <s-stack direction="block" gap="base">
           <s-text tone="neutral">
             Create a new product photo with AI and attach it to this product.
+            Describe the background and any extras (logo, packaging, lifestyle
+            scene) before generating.
           </s-text>
+
+          <label style={{ display: "grid", gap: "0.35rem" }}>
+            <s-text font-weight="bold">Background</s-text>
+            <input
+              type="text"
+              value={imageBackground}
+              onChange={(e) => setImageBackground(e.currentTarget.value)}
+              placeholder="e.g. Clean white studio, soft wood table, transparent"
+              style={{
+                width: "100%",
+                maxWidth: 520,
+                padding: "0.55rem 0.7rem",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                fontSize: "0.875rem",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: "0.35rem" }}>
+            <s-text font-weight="bold">Image description</s-text>
+            <textarea
+              value={imageDescription}
+              onChange={(e) => setImageDescription(e.currentTarget.value)}
+              rows={3}
+              placeholder="e.g. Add brand logo in corner, show product with packaging, lifestyle outdoor shot"
+              style={{
+                width: "100%",
+                maxWidth: 520,
+                padding: "0.55rem 0.7rem",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                fontSize: "0.875rem",
+                resize: "vertical",
+              }}
+            />
+          </label>
 
           {(isGeneratingImage || isApplyingAiImage) && (
             <s-box
@@ -1331,8 +1678,8 @@ export default function ProductPage() {
                 }}
               >
                 {fetcher.data.appliedMode === "auto"
-                  ? "The AI image was added to this product without preview. Check “Current images” above; if it is not visible yet, wait a few seconds and refresh this page."
-                  : "The AI image was attached to this product. Check “Current images” above; if it is not visible yet, wait a few seconds and refresh this page."}
+                  ? "The AI image was added to this product. Current images above are updated."
+                  : "The AI image was attached to this product. Current images above are updated."}
               </p>
             </s-box>
           )}
@@ -1352,8 +1699,8 @@ export default function ProductPage() {
                   fontSize: "0.875rem",
                 }}
               >
-                Shopify is still processing the image. Wait 10–30 seconds, then refresh
-                this page. The product was updated; the file may appear shortly.
+                Shopify is still processing the image. Current images will refresh
+                automatically in a few seconds.
               </p>
             </s-box>
           )}
@@ -1394,6 +1741,8 @@ export default function ProductPage() {
                     intent: autoAttachAiImage
                       ? "generate_image_auto"
                       : "generate_image",
+                    background: imageBackground,
+                    description: imageDescription,
                   },
                   { method: "post" },
                 );
