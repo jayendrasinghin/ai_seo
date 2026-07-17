@@ -267,6 +267,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: { shop: session.shop, id: { in: selectedIds } },
       select: {
         id: true,
+        scanRunId: true,
         productId: true,
         mediaId: true,
         productTitle: true,
@@ -359,8 +360,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     if (appliedIds.length > 0) {
-      await prisma.imageSeoIssue.deleteMany({
-        where: { shop: session.shop, id: { in: appliedIds } },
+      const appliedIdSet = new Set(appliedIds);
+      const affectedScanRunIds = [
+        ...new Set(
+          issues
+            .filter((issue) => appliedIdSet.has(issue.id))
+            .map((issue) => issue.scanRunId),
+        ),
+      ];
+
+      await prisma.$transaction(async (tx) => {
+        await tx.imageSeoIssue.deleteMany({
+          where: { shop: session.shop, id: { in: appliedIds } },
+        });
+
+        for (const scanRunId of affectedScanRunIds) {
+          const issuesOpen = await tx.imageSeoIssue.count({
+            where: { shop: session.shop, scanRunId },
+          });
+          await tx.imageScanRun.updateMany({
+            where: { id: scanRunId, shop: session.shop },
+            data: { issuesOpen },
+          });
+        }
       });
     }
 
@@ -399,45 +421,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     issueTypeFilter === "DUPLICATE_ALT"
       ? issueTypeFilter
       : "ALL";
-  const response = await admin.graphql(
-    `#graphql
-      query AiSeoAppOptimizerDashboard {
-        products(first: 20) {
-          nodes {
-            id
-            title
-            status
-            images(first: 1) {
-              nodes {
-                url
-                altText
-              }
-            }
-          }
-        }
-      }`,
-  );
-
-  const json = (await response.json()) as {
-    data?: {
-      products?: {
-        nodes?: Array<{
-          id: string;
-          title: string;
-          status: string;
-          images?: { nodes?: Array<{ altText?: string | null }> };
-        }>;
-      };
-    };
-    errors?: { message: string }[];
-  };
-
-  const products = json.data?.products?.nodes ?? [];
-  const missingAltCount = products.reduce((acc, p) => {
-    const firstAlt = p.images?.nodes?.[0]?.altText?.trim();
-    return firstAlt ? acc : acc + 1;
-  }, 0);
-
   const usage = await prisma.storeUsage.upsert({
     where: { shop: session.shop },
     update: {},
@@ -445,7 +428,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const latestScanRun = await prisma.imageScanRun.findFirst({
-    where: { shop: session.shop },
+    where: { shop: session.shop, status: "completed" },
     orderBy: { startedAt: "desc" },
   });
 
@@ -481,11 +464,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       issueCounts[row.issueType as keyof typeof issueCounts] = row._count._all;
     }
   }
+  const currentIssuesOpen =
+    issueCounts.MISSING_ALT + issueCounts.SHORT_ALT + issueCounts.DUPLICATE_ALT;
+  const currentScanRun = latestScanRun
+    ? { ...latestScanRun, issuesOpen: currentIssuesOpen }
+    : null;
 
   return {
     stats: {
-      productsScanned: products.length,
-      imagesMissingAlt: missingAltCount,
+      productsScanned: currentScanRun?.productsScanned ?? 0,
+      imagesMissingAlt: issueCounts.MISSING_ALT,
       aiSeoUsed: usage.aiSeoUsed,
       aiImageUsed: usage.aiImageUsed,
     },
@@ -495,8 +483,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       plan: getEffectivePlan(usage),
       partnerDevelopment,
     },
-    errors: json.errors ?? null,
-    latestScanRun,
+    latestScanRun: currentScanRun,
     latestIssues,
     issueCounts,
     issueTypeFilter: validIssueTypeFilter,
@@ -504,7 +491,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function Index() {
-  const { stats, usage, errors, latestScanRun, latestIssues, issueCounts, issueTypeFilter } =
+  const { stats, usage, latestScanRun, latestIssues, issueCounts, issueTypeFilter } =
     useLoaderData<typeof loader>();
   const { search: embeddedSearch } = useLocation();
   const fetcher = useFetcher<typeof action>();
@@ -595,14 +582,6 @@ export default function Index() {
           </div>
           <span className="seoi-status">Store connected</span>
         </div>
-
-        {errors && (
-          <s-section>
-            <s-text tone="critical">
-              Could not load full dashboard data. {errors[0]?.message || "Unknown error"}
-            </s-text>
-          </s-section>
-        )}
 
         <div className="seoi-dashboard-grid">
           <section className="seoi-panel seoi-panel--accent">
