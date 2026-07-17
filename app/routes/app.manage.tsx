@@ -8,6 +8,14 @@ import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { applyAvailableQuantityToAllLocations } from "../inventory-locations.server";
+import {
+  clearResolvedLowStock,
+  getInventoryAlertSettings,
+  notifyLowStockLines,
+  saveInventoryAlertSettings,
+  type LowStockLine,
+} from "../inventory-stock.server";
+import { LOW_STOCK_THRESHOLD, stockBadgeStyle } from "../inventory-stock";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -20,20 +28,32 @@ function useDebouncedValue<T>(value: T, ms: number): T {
   return debounced;
 }
 
-function managePathWithQ(locationSearch: string, q: string): string {
+function managePathWithParams(
+  locationSearch: string,
+  opts: { q?: string; cursor?: string | null },
+): string {
   const p = new URLSearchParams(
     locationSearch.startsWith("?") ? locationSearch.slice(1) : locationSearch,
   );
-  const t = q.trim();
+  const t = (opts.q ?? p.get("q") ?? "").trim();
   if (t) p.set("q", t);
   else p.delete("q");
+
+  if (opts.cursor) p.set("cursor", opts.cursor);
+  else p.delete("cursor");
+
   const qs = p.toString();
   return qs.length > 0 ? `/app/manage?${qs}` : "/app/manage";
+}
+
+function managePathWithQ(locationSearch: string, q: string): string {
+  return managePathWithParams(locationSearch, { q, cursor: null });
 }
 
 type ManageVariant = {
   id: string;
   label: string;
+  sku: string | null;
   inventoryItemId: string | null;
   levels: Array<{
     locationId: string;
@@ -52,9 +72,13 @@ type ManageProduct = {
 
 type ManageLocation = { id: string; name: string; isActive: boolean };
 
-function parseProductsFromResponse(data: unknown): ManageProduct[] {
+function parseProductsFromResponse(data: unknown): {
+  products: ManageProduct[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+} {
   const root = data as {
     products?: {
+      pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
       nodes?: Array<{
         id: string;
         title: string;
@@ -72,6 +96,7 @@ function parseProductsFromResponse(data: unknown): ManageProduct[] {
             id: string;
             title?: string | null;
             displayName?: string | null;
+            sku?: string | null;
             inventoryItem?: {
               id: string;
               inventoryLevels?: {
@@ -88,7 +113,7 @@ function parseProductsFromResponse(data: unknown): ManageProduct[] {
   };
 
   const nodes = root.products?.nodes ?? [];
-  return nodes.map((p) => {
+  const products = nodes.map((p) => {
     const firstImageNode = p.images?.nodes?.[0];
     const firstMediaImage = p.media?.nodes?.find((n) => n.image?.url)?.image;
     const thumbUrl =
@@ -103,43 +128,83 @@ function parseProductsFromResponse(data: unknown): ManageProduct[] {
       p.title;
 
     return {
-    id: p.id,
-    title: p.title,
-    thumbUrl,
-    thumbAlt: thumbAlt || p.title,
-    variants: (p.variants?.nodes ?? []).map((v) => {
-      const label =
-        (v.displayName && String(v.displayName).trim()) ||
-        (v.title && String(v.title).trim()) ||
-        "Default";
-      const item = v.inventoryItem;
-      const levelNodes = item?.inventoryLevels?.nodes ?? [];
-      const levels = levelNodes
-        .filter((n) => n.location?.id)
-        .map((n) => {
-          const qtyEntry = (n.quantities ?? []).find(
-            (q) => q.name === "available",
-          );
-          return {
-            locationId: n.location!.id,
-            locationName: n.location!.name,
-            available: qtyEntry?.quantity ?? 0,
-          };
-        });
-      return {
-        id: v.id,
-        label,
-        inventoryItemId: item?.id ?? null,
-        levels,
-      };
-    }),
-  };
+      id: p.id,
+      title: p.title,
+      thumbUrl,
+      thumbAlt: thumbAlt || p.title,
+      variants: (p.variants?.nodes ?? []).map((v) => {
+        const label =
+          (v.displayName && String(v.displayName).trim()) ||
+          (v.title && String(v.title).trim()) ||
+          "Default";
+        const item = v.inventoryItem;
+        const levelNodes = item?.inventoryLevels?.nodes ?? [];
+        const levels = levelNodes
+          .filter((n) => n.location?.id)
+          .map((n) => {
+            const qtyEntry = (n.quantities ?? []).find(
+              (q) => q.name === "available",
+            );
+            return {
+              locationId: n.location!.id,
+              locationName: n.location!.name,
+              available: qtyEntry?.quantity ?? 0,
+            };
+          });
+        return {
+          id: v.id,
+          label,
+          sku: v.sku?.trim() || null,
+          inventoryItemId: item?.id ?? null,
+          levels,
+        };
+      }),
+    };
   });
+
+  return {
+    products,
+    pageInfo: {
+      hasNextPage: Boolean(root.products?.pageInfo?.hasNextPage),
+      endCursor: root.products?.pageInfo?.endCursor ?? null,
+    },
+  };
+}
+
+function collectLowStockLines(
+  products: ManageProduct[],
+  locations: ManageLocation[],
+): LowStockLine[] {
+  const lines: LowStockLine[] = [];
+  for (const product of products) {
+    for (const variant of product.variants) {
+      if (!variant.inventoryItemId) continue;
+      for (const loc of locations) {
+        const lvl = variant.levels.find((l) => l.locationId === loc.id);
+        const qty = lvl?.available ?? 0;
+        if (qty < LOW_STOCK_THRESHOLD) {
+          lines.push({
+            inventoryItemId: variant.inventoryItemId,
+            locationId: loc.id,
+            productTitle: product.title,
+            variantLabel: variant.label,
+            locationName: loc.name,
+            quantity: qty,
+          });
+        }
+      }
+    }
+  }
+  return lines;
 }
 
 const manageProductsQuery = `#graphql
-  query ManageStockProducts($query: String) {
-    products(first: 25, query: $query, sortKey: UPDATED_AT, reverse: true) {
+  query ManageStockProducts($query: String, $cursor: String) {
+    products(first: 20, after: $cursor, query: $query, sortKey: TITLE) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         id
         title
@@ -153,14 +218,15 @@ const manageProductsQuery = `#graphql
             altText
           }
         }
-        variants(first: 20) {
+        variants(first: 50) {
           nodes {
             id
             title
             displayName
+            sku
             inventoryItem {
               id
-              inventoryLevels(first: 15) {
+              inventoryLevels(first: 25) {
                 nodes {
                   location {
                     id
@@ -181,12 +247,12 @@ const manageProductsQuery = `#graphql
 `;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const productSearch = url.searchParams.get("q")?.trim() ?? "";
+  const cursor = url.searchParams.get("cursor")?.trim() || null;
 
-  // Split into two queries to stay under the single-query cost limit (~1000).
-  const [locRes, prodRes] = await Promise.all([
+  const [locRes, prodRes, shopRes, alertSettings] = await Promise.all([
     admin.graphql(
       `#graphql
         query ManageStockLocations {
@@ -202,8 +268,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     admin.graphql(manageProductsQuery, {
       variables: {
         query: productSearch.length > 0 ? productSearch : null,
+        cursor,
       },
     }),
+    admin.graphql(
+      `#graphql
+        query ManageShopEmail {
+          shop {
+            email
+            contactEmail
+          }
+        }`,
+    ),
+    getInventoryAlertSettings(session.shop),
   ]);
 
   const locJson = (await locRes.json()) as {
@@ -214,6 +291,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     data?: unknown;
     errors?: { message: string }[];
   };
+  const shopJson = (await shopRes.json()) as {
+    data?: { shop?: { email?: string | null; contactEmail?: string | null } };
+  };
 
   const errMsg =
     locJson.errors?.[0]?.message ?? prodJson.errors?.[0]?.message ?? null;
@@ -223,6 +303,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       locations: [] as ManageLocation[],
       products: [] as ManageProduct[],
       productSearch,
+      pageInfo: { hasNextPage: false, endCursor: null as string | null },
+      cursor,
+      alertSettings: {
+        alertEmail: alertSettings.alertEmail,
+        alertsEnabled: alertSettings.alertsEnabled,
+        threshold: alertSettings.threshold,
+      },
+      shopEmailHint:
+        shopJson.data?.shop?.contactEmail ||
+        shopJson.data?.shop?.email ||
+        "",
+      lowStockCount: 0,
+      alertMailResult: null as { sent: number; skipped: number } | null,
     };
   }
 
@@ -230,26 +323,109 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locations?: { nodes?: ManageLocation[] };
   };
   const locations = (data.locations?.nodes ?? []).filter((l) => l.isActive);
-  const products = parseProductsFromResponse(prodJson.data);
+  const parsed = parseProductsFromResponse(prodJson.data);
+  const products = parsed.products;
+  const lowStockLines = collectLowStockLines(products, locations);
+
+  let alertMailResult: { sent: number; skipped: number } | null = null;
+  const shouldCheck =
+    alertSettings.alertsEnabled &&
+    Boolean(alertSettings.alertEmail?.includes("@")) &&
+    (!alertSettings.lastCheckedAt ||
+      Date.now() - alertSettings.lastCheckedAt.getTime() > 15 * 60 * 1000);
+
+  if (shouldCheck && lowStockLines.length > 0) {
+    alertMailResult = await notifyLowStockLines(session.shop, lowStockLines);
+  }
 
   return {
     error: null as string | null,
     locations,
     products,
     productSearch,
+    pageInfo: parsed.pageInfo,
+    cursor,
+    alertSettings: {
+      alertEmail: alertSettings.alertEmail,
+      alertsEnabled: alertSettings.alertsEnabled,
+      threshold: alertSettings.threshold,
+    },
+    shopEmailHint:
+      shopJson.data?.shop?.contactEmail || shopJson.data?.shop?.email || "",
+    lowStockCount: lowStockLines.length,
+    alertMailResult,
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  if (intent === "save_alert_settings") {
+    const alertEmail = String(formData.get("alertEmail") || "");
+    const alertsEnabled = formData.get("alertsEnabled") === "yes";
+    if (alertEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alertEmail.trim())) {
+      return {
+        status: "error" as const,
+        intent: "save_alert_settings" as const,
+        message: "Enter a valid alert email address.",
+      };
+    }
+    await saveInventoryAlertSettings(session.shop, {
+      alertEmail,
+      alertsEnabled,
+    });
+    return {
+      status: "alert_settings_saved" as const,
+      intent: "save_alert_settings" as const,
+    };
+  }
+
+  if (intent === "send_low_stock_now") {
+    const productSearch = String(formData.get("productSearch") || "").trim();
+    const cursor = String(formData.get("cursor") || "").trim() || null;
+    const [locRes, prodRes] = await Promise.all([
+      admin.graphql(
+        `#graphql
+          query ManageStockLocationsAlert {
+            locations(first: 25, sortKey: NAME) {
+              nodes { id name isActive }
+            }
+          }`,
+      ),
+      admin.graphql(manageProductsQuery, {
+        variables: {
+          query: productSearch.length > 0 ? productSearch : null,
+          cursor,
+        },
+      }),
+    ]);
+    const locJson = (await locRes.json()) as {
+      data?: { locations?: { nodes?: ManageLocation[] } };
+    };
+    const prodJson = (await prodRes.json()) as { data?: unknown };
+    const locations = (locJson.data?.locations?.nodes ?? []).filter(
+      (l) => l.isActive,
+    );
+    const { products } = parseProductsFromResponse(prodJson.data);
+    const lines = collectLowStockLines(products, locations);
+    const result = await notifyLowStockLines(session.shop, lines);
+    return {
+      status: "low_stock_checked" as const,
+      intent: "send_low_stock_now" as const,
+      ...result,
+      lowStockCount: lines.length,
+    };
+  }
 
   if (intent === "set_quantity") {
     const inventoryItemId = String(formData.get("inventoryItemId") || "");
     const newQtyRaw = formData.get("newQuantity");
     const newQuantity =
       typeof newQtyRaw === "string" ? Number.parseInt(newQtyRaw, 10) : NaN;
+    const productTitle = String(formData.get("productTitle") || "Product");
+    const variantLabel = String(formData.get("variantLabel") || "Variant");
 
     if (!inventoryItemId || Number.isNaN(newQuantity)) {
       return {
@@ -285,11 +461,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       };
     }
 
+    await clearResolvedLowStock(session.shop, inventoryItemId, newQuantity);
+
+    let alertSent = 0;
+    if (newQuantity < LOW_STOCK_THRESHOLD) {
+      const locRes = await admin.graphql(
+        `#graphql
+          query ManageActiveLocationsForAlert {
+            locations(first: 25, sortKey: NAME) {
+              nodes { id name isActive }
+            }
+          }`,
+      );
+      const locJson = (await locRes.json()) as {
+        data?: { locations?: { nodes?: ManageLocation[] } };
+      };
+      const active = (locJson.data?.locations?.nodes ?? []).filter(
+        (l) => l.isActive,
+      );
+      const lines: LowStockLine[] = active.map((loc) => ({
+        inventoryItemId,
+        locationId: loc.id,
+        productTitle,
+        variantLabel,
+        locationName: loc.name,
+        quantity: newQuantity,
+      }));
+      const mail = await notifyLowStockLines(session.shop, lines);
+      alertSent = mail.sent;
+    }
+
     return {
       status: "quantity_updated" as const,
       intent: "set_quantity" as const,
       newQuantity,
       locationsAdjusted: invResult.locationsAdjusted,
+      alertSent,
     };
   }
 
@@ -681,7 +888,8 @@ export default function ManagePage() {
     ? manageSearchFetcher.data
     : loaderData;
 
-  const { error, locations, products, productSearch } = display;
+  const { error, locations, products, productSearch, pageInfo, cursor, alertSettings, shopEmailHint, lowStockCount, alertMailResult } =
+    display;
 
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
@@ -740,16 +948,67 @@ export default function ManagePage() {
     locationRows[0]?.available ??
     0;
 
+  const inventoryRows = useMemo(() => {
+    const rows: Array<{
+      key: string;
+      productId: string;
+      productTitle: string;
+      thumbUrl: string | null;
+      thumbAlt: string;
+      variantId: string;
+      variantLabel: string;
+      sku: string | null;
+      inventoryItemId: string | null;
+      total: number;
+      byLocation: Array<{
+        locationId: string;
+        locationName: string;
+        available: number;
+        hasLevel: boolean;
+      }>;
+    }> = [];
+
+    for (const product of products) {
+      for (const variant of product.variants) {
+        const byLocation = locations.map((loc) => {
+          const lvl = variant.levels.find((l) => l.locationId === loc.id);
+          return {
+            locationId: loc.id,
+            locationName: loc.name,
+            available: lvl?.available ?? 0,
+            hasLevel: lvl != null,
+          };
+        });
+        const total = byLocation.reduce((sum, row) => sum + row.available, 0);
+        rows.push({
+          key: `${product.id}:${variant.id}`,
+          productId: product.id,
+          productTitle: product.title,
+          thumbUrl: product.thumbUrl,
+          thumbAlt: product.thumbAlt,
+          variantId: variant.id,
+          variantLabel: variant.label,
+          sku: variant.sku,
+          inventoryItemId: variant.inventoryItemId,
+          total,
+          byLocation,
+        });
+      }
+    }
+    return rows;
+  }, [products, locations]);
+
   return (
     <div>
       <s-page heading="Stock &amp; new product">
         <div className="seoi-page-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">Catalog operations</span>
-            <h2>Manage inventory and launch products confidently.</h2>
+            <h2>Full inventory by variant and location.</h2>
             <p>
-              Update variant quantities across locations or create a complete
-              Shopify product without leaving the app.
+              Review every variant’s available stock by location, update
+              quantities, and get emailed when stock falls below{" "}
+              {LOW_STOCK_THRESHOLD}.
             </p>
           </div>
           <span className="seoi-status">Shopify synced</span>
@@ -770,38 +1029,244 @@ export default function ManagePage() {
           </s-section>
         ) : null}
 
-        <s-section heading="Set available quantity">
+        <s-section heading="Full inventory">
           <s-stack direction="block" gap="base">
             <s-text tone="neutral">
-              You update <strong>one variant at a time</strong> — not your whole
-              catalog. The table shows every <strong>active</strong> shop location
-              (up to 25) with available stock from this screen’s data (up to 15
-              inventory levels per variant). Saving sets that same quantity at{" "}
-              <strong>all</strong> active locations in Shopify. Locations marked{" "}
-              <strong>Not stocked yet</strong> are activated first, then existing
-              levels are adjusted. The product list shows up to 25 matches (recently
-              updated first when not filtering). Type to filter — results refresh as you
-              type; use <strong>Update URL</strong> to bookmark or share the current
-              filter.
+              Shows products with all variants and available stock at each active
+              location. Color key:{" "}
+              <span style={stockBadgeStyle(2)}>&lt;5</span> low,{" "}
+              <span style={stockBadgeStyle(7)}>6–9</span> watch,{" "}
+              <span style={stockBadgeStyle(12)}>≥10</span> healthy. Page size: 20
+              products (up to 50 variants each).
             </s-text>
 
-            <div style={{ maxWidth: "28rem" }}>
-              <div
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.75rem",
+                alignItems: "flex-end",
+              }}
+            >
+              <label style={{ flex: "1", minWidth: "12rem" }}>
+                <s-text font-weight="bold">Find a product</s-text>
+                <input
+                  type="search"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type to filter — title, SKU, type…"
+                  autoComplete="off"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    marginTop: "0.35rem",
+                    padding: "0.5rem",
+                  }}
+                />
+              </label>
+              <s-button type="button" variant="secondary" onClick={commitSearchToUrl}>
+                Update URL
+              </s-button>
+            </div>
+            {searchingLive ? (
+              <s-text tone="neutral">Loading matches…</s-text>
+            ) : null}
+            <s-text tone="neutral">
+              {lowStockCount > 0
+                ? `${lowStockCount} location line(s) below ${LOW_STOCK_THRESHOLD} on this page.`
+                : `No low-stock lines below ${LOW_STOCK_THRESHOLD} on this page.`}
+              {alertMailResult && alertMailResult.sent > 0
+                ? ` Email sent for ${alertMailResult.sent} item(s).`
+                : ""}
+            </s-text>
+
+            <div style={{ overflowX: "auto" }}>
+              <table
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                  alignItems: "flex-end",
+                  borderCollapse: "collapse",
+                  width: "100%",
+                  minWidth: Math.max(640, 280 + locations.length * 110),
+                  fontSize: "0.8125rem",
                 }}
               >
-                <label style={{ flex: "1", minWidth: "12rem" }}>
-                  <s-text font-weight="bold">Find a product</s-text>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #c9cccf", background: "#f6f6f7" }}>
+                    <th style={{ textAlign: "left", padding: "0.45rem 0.5rem" }}>
+                      Product
+                    </th>
+                    <th style={{ textAlign: "left", padding: "0.45rem 0.5rem" }}>
+                      Variant
+                    </th>
+                    <th style={{ textAlign: "right", padding: "0.45rem 0.5rem" }}>
+                      Total
+                    </th>
+                    {locations.map((loc) => (
+                      <th
+                        key={loc.id}
+                        style={{ textAlign: "right", padding: "0.45rem 0.5rem" }}
+                      >
+                        {loc.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryRows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={3 + locations.length}
+                        style={{ padding: "0.75rem 0.5rem", color: "#6d7175" }}
+                      >
+                        No products found for this filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    inventoryRows.map((row) => (
+                      <tr
+                        key={row.key}
+                        style={{ borderBottom: "1px solid #e3e5e7" }}
+                      >
+                        <td style={{ padding: "0.45rem 0.5rem", verticalAlign: "middle" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "0.5rem",
+                              alignItems: "center",
+                            }}
+                          >
+                            {row.thumbUrl ? (
+                              <img
+                                src={row.thumbUrl}
+                                alt={row.thumbAlt}
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  objectFit: "cover",
+                                  borderRadius: 6,
+                                  border: "1px solid #ddd",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 6,
+                                  background: "#e3e3e3",
+                                }}
+                              />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{row.productTitle}</div>
+                              <EmbeddedNavLink
+                                hrefPathname={`/app/products/${productPathSegmentFromGid(row.productId)}`}
+                                style={{ fontSize: "0.75rem" }}
+                              >
+                                Open
+                              </EmbeddedNavLink>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: "0.45rem 0.5rem" }}>
+                          <div>{row.variantLabel}</div>
+                          {row.sku ? (
+                            <div style={{ color: "#6d7175", fontSize: "0.75rem" }}>
+                              SKU: {row.sku}
+                            </div>
+                          ) : null}
+                          {!row.inventoryItemId ? (
+                            <div style={{ color: "#b45309", fontSize: "0.75rem" }}>
+                              No inventory tracking
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "0.45rem 0.5rem" }}>
+                          <span style={stockBadgeStyle(row.total)}>{row.total}</span>
+                        </td>
+                        {row.byLocation.map((cell) => (
+                          <td
+                            key={cell.locationId}
+                            style={{
+                              textAlign: "right",
+                              padding: "0.45rem 0.5rem",
+                            }}
+                          >
+                            {cell.hasLevel || cell.available > 0 ? (
+                              <span style={stockBadgeStyle(cell.available)}>
+                                {cell.available}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#8c9196" }}>—</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              {cursor ? (
+                <EmbeddedNavLink
+                  hrefPathname="/app/manage"
+                  search={(() => {
+                    const p = new URLSearchParams();
+                    if (productSearch) p.set("q", productSearch);
+                    const qs = p.toString();
+                    return qs ? `?${qs}` : undefined;
+                  })()}
+                >
+                  ← First page
+                </EmbeddedNavLink>
+              ) : null}
+              {pageInfo.hasNextPage && pageInfo.endCursor ? (
+                <EmbeddedNavLink
+                  hrefPathname="/app/manage"
+                  search={(() => {
+                    const p = new URLSearchParams();
+                    if (productSearch) p.set("q", productSearch);
+                    p.set("cursor", pageInfo.endCursor);
+                    return `?${p.toString()}`;
+                  })()}
+                >
+                  Next 20 products →
+                </EmbeddedNavLink>
+              ) : (
+                <s-text tone="neutral">End of catalog for this filter.</s-text>
+              )}
+            </div>
+          </s-stack>
+        </s-section>
+
+        <s-section heading="Low-stock email alerts">
+          <s-stack direction="block" gap="base">
+            <s-text tone="neutral">
+              Email when available quantity is below {LOW_STOCK_THRESHOLD} at any
+              location. Alerts are deduplicated for 24 hours per item/location.
+              Configure <code>RESEND_API_KEY</code> and <code>MAIL_FROM</code> on
+              the server for real delivery (otherwise emails log to the console).
+            </s-text>
+            <fetcher.Form method="post">
+              <input type="hidden" name="intent" value="save_alert_settings" />
+              <s-stack direction="block" gap="base">
+                <label style={{ display: "block", maxWidth: "28rem" }}>
+                  <s-text font-weight="bold">Alert email</s-text>
                   <input
-                    type="search"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Type to filter — title, SKU, type…"
-                    autoComplete="off"
+                    type="email"
+                    name="alertEmail"
+                    defaultValue={
+                      alertSettings.alertEmail || shopEmailHint || ""
+                    }
+                    placeholder={shopEmailHint || "you@example.com"}
                     style={{
                       display: "block",
                       width: "100%",
@@ -810,24 +1275,67 @@ export default function ManagePage() {
                     }}
                   />
                 </label>
-                <s-button type="button" variant="secondary" onClick={commitSearchToUrl}>
-                  Update URL
-                </s-button>
-              </div>
-              {productSearch ? (
-                <s-text tone="neutral">
-                  Filter: &quot;{productSearch}&quot; — up to 25 in the dropdown.
-                </s-text>
-              ) : (
-                <s-text tone="neutral">
-                  Up to 25 products in the dropdown, newest updated first. Results
-                  refresh as you type.
-                </s-text>
-              )}
-              {searchingLive ? (
-                <s-text tone="neutral">Loading matches…</s-text>
-              ) : null}
-            </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    name="alertsEnabled"
+                    value="yes"
+                    defaultChecked={alertSettings.alertsEnabled}
+                  />
+                  <s-text>Enable low-stock emails</s-text>
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <s-button type="submit" variant="primary">
+                    Save alert settings
+                  </s-button>
+                </div>
+              </s-stack>
+            </fetcher.Form>
+            <fetcher.Form method="post">
+              <input type="hidden" name="intent" value="send_low_stock_now" />
+              <input type="hidden" name="productSearch" value={productSearch} />
+              <input type="hidden" name="cursor" value={cursor || ""} />
+              <s-button
+                type="submit"
+                variant="secondary"
+                {...(fetcher.state === "submitting" &&
+                fetcher.formData?.get("intent") === "send_low_stock_now"
+                  ? { loading: true }
+                  : {})}
+              >
+                Check this page &amp; email now
+              </s-button>
+            </fetcher.Form>
+            {fetcher.data?.status === "alert_settings_saved" ? (
+              <s-text tone="success">Alert settings saved.</s-text>
+            ) : null}
+            {fetcher.data?.status === "low_stock_checked" ? (
+              <s-text tone="success">
+                Found {fetcher.data.lowStockCount} low-stock line(s). Emails sent:{" "}
+                {fetcher.data.sent}. Skipped (cooldown/disabled):{" "}
+                {fetcher.data.skipped}.
+              </s-text>
+            ) : null}
+            {fetcher.data?.status === "error" &&
+            fetcher.data.intent === "save_alert_settings" ? (
+              <s-text tone="critical">{fetcher.data.message}</s-text>
+            ) : null}
+          </s-stack>
+        </s-section>
+
+        <s-section heading="Set available quantity">
+          <s-stack direction="block" gap="base">
+            <s-text tone="neutral">
+              Update <strong>one variant</strong> at a time. Saving sets that
+              quantity at <strong>all</strong> active locations. Select a product
+              from the inventory table filter results below (same list as above).
+            </s-text>
 
             <div
               style={{
@@ -959,7 +1467,13 @@ export default function ManagePage() {
                           {row.locationName}
                         </td>
                         <td style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>
-                          {row.hasLevel ? row.available : "Not stocked yet"}
+                          {row.hasLevel ? (
+                            <span style={stockBadgeStyle(row.available)}>
+                              {row.available}
+                            </span>
+                          ) : (
+                            "Not stocked yet"
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -982,6 +1496,16 @@ export default function ManagePage() {
                   type="hidden"
                   name="inventoryItemId"
                   value={selectedVariant.inventoryItemId}
+                />
+                <input
+                  type="hidden"
+                  name="productTitle"
+                  value={selectedProduct?.title || ""}
+                />
+                <input
+                  type="hidden"
+                  name="variantLabel"
+                  value={selectedVariant.label}
                 />
                 <label style={{ display: "block" }}>
                   <s-text font-weight="bold">
@@ -1030,6 +1554,9 @@ export default function ManagePage() {
                 Set available to {fetcher.data.newQuantity} at{" "}
                 {fetcher.data.locationsAdjusted} active location
                 {fetcher.data.locationsAdjusted === 1 ? "" : "s"}.
+                {"alertSent" in fetcher.data && fetcher.data.alertSent > 0
+                  ? ` Low-stock email sent (${fetcher.data.alertSent}).`
+                  : ""}
               </s-text>
             ) : null}
             {fetcher.data?.status === "quantity_unchanged" ? (

@@ -46,6 +46,35 @@ model StoreUsage {
   updatedAt     DateTime @updatedAt
 }
 
+/// Merchant low-stock email alerts (qty below threshold).
+model InventoryAlertSettings {
+  id            String   @id @default(cuid())
+  shop          String   @unique
+  alertEmail    String?
+  alertsEnabled Boolean  @default(true)
+  /// Notify when available quantity is below this value (exclusive).
+  threshold     Int      @default(5)
+  lastCheckedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// Dedup record so the same location/item is not emailed repeatedly.
+model LowStockNotification {
+  id              String   @id @default(cuid())
+  shop            String
+  inventoryItemId String
+  locationId      String
+  productTitle    String?
+  variantLabel    String?
+  locationName    String?
+  quantity        Int
+  notifiedAt      DateTime @default(now())
+
+  @@unique([shop, inventoryItemId, locationId])
+  @@index([shop, notifiedAt])
+}
+
 /// One store-wide image SEO scan (paginate products in Day 3+).
 model ImageScanRun {
   id              String   @id @default(cuid())
