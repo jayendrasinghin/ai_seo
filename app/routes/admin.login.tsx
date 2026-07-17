@@ -225,7 +225,6 @@ export default function AdminLoginPage() {
                 placeholder="••••••"
                 maxLength={6}
                 required
-                autoFocus
               />
               <button className="btn" type="submit">
                 Verify & continue
@@ -255,7 +254,6 @@ export default function AdminLoginPage() {
                 placeholder="you@company.com"
                 required
                 autoComplete="username"
-                autoFocus
               />
               <label htmlFor="password">Password</label>
               <input

@@ -5,13 +5,9 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
-import { isPartnerDevelopmentStore } from "../billing.server";
-import { maybeGrantFoundingMember } from "../founding.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
-  const partnerDevelopment = await isPartnerDevelopmentStore(admin);
-  await maybeGrantFoundingMember(session.shop, { partnerDevelopment });
+  await authenticate.admin(request);
 
   // eslint-disable-next-line no-undef
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
@@ -25,7 +21,7 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href={withEmbeddedSearch("/app", search)}>
-          Image SEO Optimizer
+          Dashboard
         </s-link>
         <s-link href={withEmbeddedSearch("/app/products", search)}>
           Product Tools
@@ -43,7 +39,9 @@ export default function App() {
           Help &amp; support
         </s-link>
       </s-app-nav>
-      <Outlet />
+      <main className="seoi-app-shell">
+        <Outlet />
+      </main>
     </AppProvider>
   );
 }

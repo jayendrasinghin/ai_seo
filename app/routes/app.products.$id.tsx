@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -813,11 +813,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return null;
 };
 
-const pageShellStyle: CSSProperties = {
-  backgroundColor: "#f1f2f4",
-  minHeight: "100%",
-};
-
 export default function ProductPage() {
   const { product, otherProducts, usage, shopifyError } =
     useLoaderData<typeof loader>();
@@ -854,10 +849,11 @@ export default function ProductPage() {
     fetcher.state === "submitting" &&
     fetcher.formData?.get("intent") === "apply" &&
     fetcher.formData?.get("applySource") !== "manual";
+  const aiResult = fetcher.data?.ai;
 
   if (!product) {
     return (
-      <div style={pageShellStyle}>
+      <div>
         <s-page
           heading={shopifyError ? "Could not load product" : "Product not found"}
         >
@@ -890,8 +886,20 @@ export default function ProductPage() {
   }
 
   return (
-    <div style={pageShellStyle}>
+    <div>
     <s-page heading={`Optimize: ${product.title}`}>
+      <div className="seoi-page-hero">
+        <div className="seoi-page-hero__content">
+          <span className="seoi-eyebrow">Product optimization</span>
+          <h2>{product.title}</h2>
+          <p>
+            Improve content, metadata, ALT text, imagery, and inventory from one
+            focused product workspace.
+          </p>
+        </div>
+        <span className="seoi-status">{product.status}</span>
+      </div>
+
       <s-section>
         <EmbeddedNavLink hrefPathname="/app/products">
           ← Back to product list
@@ -899,7 +907,7 @@ export default function ProductPage() {
       </s-section>
       <s-section>
         <s-stack direction="block" gap="base">
-          <s-text tone="subdued">
+          <s-text tone="neutral">
             AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
             {usage.plan === "seo_image"
                 ? " (SEO Pro Plus Image)"
@@ -910,12 +918,12 @@ export default function ProductPage() {
                     : " (SEO Starter Free)"}
           </s-text>
           {usage.partnerDevelopment ? (
-            <s-text tone="subdued">
+            <s-text tone="neutral">
               Development store detected. Billing checks are bypassed for testing.
             </s-text>
           ) : null}
           {usage.partnerDevelopment || planImageAllowed(usage.plan) ? (
-            <s-text tone="subdued">
+            <s-text tone="neutral">
               AI images this month: {usage.aiImageUsed} / {usage.aiImageMonthlyLimit}
             </s-text>
           ) : null}
@@ -961,7 +969,7 @@ export default function ProductPage() {
               ))}
             </div>
           ) : (
-            <s-text tone="subdued">No images found for this product.</s-text>
+            <s-text tone="neutral">No images found for this product.</s-text>
           )}
 
           <s-text font-weight="bold">SEO title</s-text>
@@ -1043,7 +1051,7 @@ export default function ProductPage() {
             </s-text>
           )}
 
-          {fetcher.data?.ai && (
+          {aiResult && (
             <>
               <s-heading>AI description</s-heading>
               <s-box
@@ -1054,16 +1062,16 @@ export default function ProductPage() {
               >
                 <div
                   dangerouslySetInnerHTML={{
-                    __html: fetcher.data.ai.descriptionHtml,
+                    __html: aiResult.descriptionHtml,
                   }}
                 />
               </s-box>
 
               <s-heading>AI SEO title</s-heading>
-              <s-text>{fetcher.data.ai.seoTitle}</s-text>
+              <s-text>{aiResult.seoTitle}</s-text>
 
               <s-heading>AI SEO description</s-heading>
-              <s-text>{fetcher.data.ai.seoDescription}</s-text>
+              <s-text>{aiResult.seoDescription}</s-text>
 
               <button
                 type="button"
@@ -1073,9 +1081,9 @@ export default function ProductPage() {
                     {
                       intent: "apply",
                       applySource: "ai",
-                      descriptionHtml: fetcher.data.ai.descriptionHtml,
-                      seoTitle: fetcher.data.ai.seoTitle,
-                      seoDescription: fetcher.data.ai.seoDescription,
+                      descriptionHtml: aiResult.descriptionHtml,
+                      seoTitle: aiResult.seoTitle,
+                      seoDescription: aiResult.seoDescription,
                     },
                     { method: "post" },
                   );
@@ -1196,7 +1204,7 @@ export default function ProductPage() {
                   }}
                 />
                 <div style={{ flex: "1 1 180px", minWidth: "180px" }}>
-                  <s-text tone="subdued" as="p" style={{ marginBottom: "0.5rem" }}>
+                  <s-text tone="neutral">
                     Tick to confirm you want to attach this AI image to the product, then
                     click Update image.
                   </s-text>
@@ -1623,7 +1631,7 @@ export default function ProductPage() {
                 }
               />
               {uploadFileCount > 0 ? (
-                <s-text tone="subdued" as="p" style={{ margin: 0 }}>
+                <s-text tone="neutral">
                   {uploadFileCount} image
                   {uploadFileCount === 1 ? "" : "s"} selected — ready to upload
                 </s-text>

@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
@@ -75,6 +76,12 @@ export default function AutoRedirectPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Automatic URL protection"
+        title="Prevent deleted products from becoming dead ends."
+        description="Create a permanent redirect automatically whenever Shopify removes a product."
+        status={settings.autoRedirectOnDelete ? "Enabled" : "Disabled"}
+      />
 
       <s-section>
         <s-text tone="neutral">

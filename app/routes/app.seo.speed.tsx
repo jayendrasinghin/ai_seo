@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
@@ -77,6 +78,12 @@ export default function SpeedPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Theme performance"
+        title="Make storefront pages feel faster."
+        description="Control image lazy loading, hero preloading, and safe script deferral from one theme app embed."
+        status="Theme embed"
+      />
 
       <s-section>
         <s-text tone="neutral">

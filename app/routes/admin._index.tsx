@@ -17,6 +17,7 @@ import {
   requireAdminSession,
 } from "../admin-auth.server";
 import prisma from "../db.server";
+import { LAUNCH_STORE_TARGET } from "../pricing";
 
 const MAX_REPLY = 5000;
 
@@ -120,23 +121,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let installedShops: Array<{
     shop: string;
     plan: string;
-    effectivePlan: string;
-    foundingMember: boolean;
-    foundingMemberNumber: number | null;
-    foundingExpiresAt: Date | null;
     aiSeoUsed: number;
     aiImageUsed: number;
     firstSeenAt: Date | null;
     lastActivityAt: Date | null;
   }> = [];
 
-  let foundingStats = { used: 0, limit: 99, remaining: 99, months: 12 };
+  let launchStats = {
+    installed: 0,
+    target: LAUNCH_STORE_TARGET,
+    remaining: LAUNCH_STORE_TARGET,
+  };
 
   if (section === "shops") {
-    const { getFoundingOfferStats } = await import("../founding.server");
-    const { getEffectivePlan } = await import("../plan-helpers");
-    foundingStats = await getFoundingOfferStats();
-
     const installedShopRows = await prisma.session.findMany({
       distinct: ["shop"],
       select: { shop: true },
@@ -146,33 +143,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       select: {
         shop: true,
         plan: true,
-        foundingMember: true,
-        foundingMemberNumber: true,
-        foundingExpiresAt: true,
-        foundingGrantedAt: true,
         aiSeoUsed: true,
         aiImageUsed: true,
         createdAt: true,
         updatedAt: true,
       },
     });
+    launchStats = {
+      installed: installedShopRows.length,
+      target: LAUNCH_STORE_TARGET,
+      remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
+    };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
     installedShops = installedShopRows.map((row) => {
       const usage = usageByShop.get(row.shop);
-      const planUsage = {
-        plan: usage?.plan ?? "free",
-        foundingMember: usage?.foundingMember ?? false,
-        foundingMemberNumber: usage?.foundingMemberNumber ?? null,
-        foundingGrantedAt: usage?.foundingGrantedAt ?? null,
-        foundingExpiresAt: usage?.foundingExpiresAt ?? null,
-      };
       return {
         shop: row.shop,
-        plan: planUsage.plan,
-        effectivePlan: getEffectivePlan(planUsage),
-        foundingMember: planUsage.foundingMember,
-        foundingMemberNumber: planUsage.foundingMemberNumber,
-        foundingExpiresAt: planUsage.foundingExpiresAt,
+        plan: usage?.plan ?? "free",
         aiSeoUsed: usage?.aiSeoUsed ?? 0,
         aiImageUsed: usage?.aiImageUsed ?? 0,
         firstSeenAt: usage?.createdAt ?? null,
@@ -191,7 +178,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     counts: { open: openCount, replied: repliedCount, total: totalCount },
     messages,
     installedShops,
-    foundingStats,
+    launchStats,
   };
 };
 
@@ -561,7 +548,7 @@ export default function AdminIndexPage() {
     counts,
     messages,
     installedShops,
-    foundingStats,
+    launchStats,
   } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
@@ -714,13 +701,12 @@ export default function AdminIndexPage() {
               <>
                 <div className="stats" style={{ marginBottom: "1rem" }}>
                   <div className="stat">
-                    <div className="label">Founding members</div>
+                    <div className="label">Launch installs</div>
                     <div className="value">
-                      {foundingStats.used} / {foundingStats.limit}
+                      {launchStats.installed} / {launchStats.target}
                     </div>
                     <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                      {foundingStats.remaining} slots left · Starter free{" "}
-                      {foundingStats.months} months
+                      {launchStats.remaining} stores remaining at launch pricing
                     </p>
                   </div>
                 </div>
@@ -729,14 +715,7 @@ export default function AdminIndexPage() {
                     <div key={s.shop} className="card">
                       <div className="shop">{s.shop}</div>
                       <p className="meta" style={{ marginTop: 6 }}>
-                        Shopify plan: {s.plan} · Effective: {s.effectivePlan}
-                        {s.foundingMember
-                          ? ` · Founding #${s.foundingMemberNumber}${
-                              s.foundingExpiresAt
-                                ? ` until ${new Date(s.foundingExpiresAt).toLocaleDateString()}`
-                                : ""
-                            }`
-                          : ""}
+                        Shopify plan: {s.plan}
                       </p>
                       <p className="meta">
                         AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}

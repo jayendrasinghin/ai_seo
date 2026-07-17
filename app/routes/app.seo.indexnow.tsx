@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
@@ -134,6 +135,12 @@ export default function IndexNowPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Faster discovery"
+        title="Tell search engines when your catalog changes."
+        description="Submit updated product and page URLs to IndexNow manually or automatically after Shopify product changes."
+        status={settings.indexNowEnabled ? "Enabled" : "Not enabled"}
+      />
 
       <s-section>
         <s-text tone="neutral">

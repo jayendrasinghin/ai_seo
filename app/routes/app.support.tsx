@@ -8,16 +8,10 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import type { CSSProperties } from "react";
 import { getDefaultSupportAppId } from "../admin-auth.server";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
-
-const pageShellStyle: CSSProperties = {
-  backgroundColor: "#f1f2f4",
-  minHeight: "100%",
-};
 
 const MAX_MESSAGE = 5000;
 const MAX_SUBJECT = 200;
@@ -207,8 +201,20 @@ export default function SupportPage() {
     fetcher.data?.status === "error" ? fetcher.data.message : null;
 
   return (
-    <div style={pageShellStyle}>
+    <div>
       <s-page heading="Help &amp; support">
+        <div className="seoi-page-hero">
+          <div className="seoi-page-hero__content">
+            <span className="seoi-eyebrow">Merchant support</span>
+            <h2>Get help without leaving Shopify.</h2>
+            <p>
+              Send a question, report an issue, or request guidance. Replies stay
+              attached to your store so your support history remains easy to find.
+            </p>
+          </div>
+          <span className="seoi-status">Support available</span>
+        </div>
+
         <s-section>
           <s-text tone="neutral">
             Send us a question or describe an issue. Your store domain is saved
@@ -233,7 +239,7 @@ export default function SupportPage() {
         ) : null}
 
         <s-section heading="Send a message">
-          <fetcher.Form method="post">
+          <fetcher.Form method="post" className="seoi-support-form">
             <s-stack direction="block" gap="base">
               <label style={{ display: "block" }}>
                 <s-text font-weight="bold">Your email (optional)</s-text>
@@ -340,16 +346,11 @@ export default function SupportPage() {
 
         {recent.length > 0 ? (
           <s-section heading="Your recent messages (this store)">
-            <s-stack direction="block" gap="base">
+            <div className="seoi-conversation-list">
               {recent.map((row) => (
                 <div
                   key={row.id}
-                  style={{
-                    border: "1px solid #e3e5e7",
-                    borderRadius: 8,
-                    padding: "0.75rem 1rem",
-                    background: "#fff",
-                  }}
+                  className="seoi-conversation-card"
                 >
                   <s-text tone="neutral">
                     {new Date(row.createdAt).toLocaleString(undefined, {
@@ -375,13 +376,7 @@ export default function SupportPage() {
                   ) : null}
                   {row.reply ? (
                     <div
-                      style={{
-                        marginTop: "0.75rem",
-                        padding: "0.65rem 0.75rem",
-                        background: "#f0f5ff",
-                        borderRadius: 6,
-                        border: "1px solid #c5d4f9",
-                      }}
+                      className="seoi-support-reply"
                     >
                       <s-text font-weight="bold">Reply from support</s-text>
                       {row.replyAt ? (
@@ -408,7 +403,7 @@ export default function SupportPage() {
                   )}
                 </div>
               ))}
-            </s-stack>
+            </div>
           </s-section>
         ) : null}
       </s-page>

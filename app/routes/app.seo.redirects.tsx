@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import {
   createUrlRedirect,
   deleteUrlRedirect,
@@ -87,6 +88,12 @@ export default function RedirectsPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Traffic protection"
+        title="Keep valuable links working."
+        description="Create and manage permanent Shopify redirects when products, pages, or inbound URLs change."
+        status={`${redirects.length} loaded`}
+      />
 
       <s-section>
         <s-text tone="neutral">
@@ -130,6 +137,11 @@ export default function RedirectsPage() {
 
       <s-section heading="Existing redirects">
         <form method="get" style={{ marginBottom: "1rem" }}>
+          {Array.from(new URLSearchParams(search).entries())
+            .filter(([key]) => key !== "q")
+            .map(([key, value]) => (
+              <input key={key} type="hidden" name={key} value={value} />
+            ))}
           <s-stack direction="inline" gap="base">
             <s-text-field name="q" label="Search" value={q} />
             <s-button type="submit">Search</s-button>

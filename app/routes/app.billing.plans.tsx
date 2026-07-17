@@ -14,17 +14,15 @@ import {
 import {
   AI_IMAGE_MONTHLY_INCLUDED,
   AI_IMAGE_PLAN_LABEL,
-  FOUNDING_MEMBER_LIMIT,
-  FOUNDING_MONTHS,
   FREE_AI_SEO_MONTHLY,
   FREE_PLAN_NAME,
+  LAUNCH_STORE_TARGET,
   PLAN_FEATURES,
   PRO_PLAN_NAME,
   SEO_PLAN_LABEL,
   STARTER_PLAN_NAME,
 } from "../pricing";
 import {
-  foundingOfferSummary,
   getEffectivePlan,
   planImageAllowed,
   planSeoUnlimited,
@@ -44,12 +42,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const effectivePlan = getEffectivePlan(usage);
-  const founding = foundingOfferSummary(usage);
 
   return {
     plan: usage.plan,
     effectivePlan,
-    founding,
     freeQuotaLimit: usage.freeQuotaLimit,
     aiSeoUsed: usage.aiSeoUsed,
     aiImageUsed: usage.aiImageUsed,
@@ -61,14 +57,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 function currentPlanLabel(
   shopifyPlan: string,
   effectivePlan: string,
-  founding: ReturnType<typeof foundingOfferSummary>,
 ): string {
-  if (founding.active) {
-    return `Founding Member #${founding.number} — ${STARTER_PLAN_NAME} free until ${founding.expiresAt?.toLocaleDateString() ?? "—"} (${founding.daysLeft} days left)`;
-  }
-  if (founding.expired) {
-    return `Founding year ended — now on ${shopifyPlan === "free" ? FREE_PLAN_NAME : shopifyPlan === "seo" ? STARTER_PLAN_NAME : PRO_PLAN_NAME}. Upgrade to keep Starter (${SEO_PLAN_LABEL}).`;
-  }
   if (effectivePlan === "free" || shopifyPlan === "free") {
     return `${FREE_PLAN_NAME} — ${FREE_AI_SEO_MONTHLY} AI SEO optimizations/month`;
   }
@@ -88,7 +77,6 @@ export default function BillingPlansPage() {
   const {
     plan,
     effectivePlan,
-    founding,
     billingTestMode,
     partnerDevelopment,
   } = useLoaderData<typeof loader>();
@@ -100,14 +88,20 @@ export default function BillingPlansPage() {
   const hasImage = planImageAllowed(effectivePlan);
 
   return (
-    <div
-      style={{
-        maxWidth: "40rem",
-        margin: "0 auto",
-        padding: "1.25rem 1rem 2rem",
-      }}
-    >
+    <div>
       <s-page heading="Plans and billing">
+        <div className="seoi-page-hero">
+          <div className="seoi-page-hero__content">
+            <span className="seoi-eyebrow">Simple, transparent pricing</span>
+            <h2>Choose the SEO toolkit that fits your store.</h2>
+            <p>
+              Start free, unlock unlimited AI SEO, or add product-image
+              generation as your catalog grows.
+            </p>
+          </div>
+          <span className="seoi-status">Managed by Shopify</span>
+        </div>
+
         {billingTestMode ? (
           <s-section>
             <s-text tone="neutral">
@@ -120,8 +114,7 @@ export default function BillingPlansPage() {
           <s-section>
             <s-text tone="info">
               Partner development store detected. This app bypasses paid-plan checks here for
-              testing, so subscription checkout is not required. Dev stores do not use founding
-              member slots.
+              testing, so subscription checkout is not required.
             </s-text>
           </s-section>
         ) : null}
@@ -135,36 +128,10 @@ export default function BillingPlansPage() {
           </s-section>
         ) : null}
 
-        {founding.active ? (
-          <s-section heading="Launch offer">
-            <s-stack direction="block" gap="small-200">
-              <s-text tone="success">
-                You are Founding Member #{founding.number} of {FOUNDING_MEMBER_LIMIT}.{" "}
-                {STARTER_PLAN_NAME} is included free for {FOUNDING_MONTHS} months.
-              </s-text>
-              <s-text tone="neutral">
-                Expires {founding.expiresAt?.toLocaleDateString() ?? "—"} ({founding.daysLeft} days
-                left). After that, keep Starter at {SEO_PLAN_LABEL}, or stay on Free. AI product
-                images stay on Pro ({AI_IMAGE_PLAN_LABEL}).
-              </s-text>
-            </s-stack>
-          </s-section>
-        ) : null}
-
-        {founding.expired ? (
-          <s-section heading="Founding year ended">
-            <s-text tone="caution">
-              Your {FOUNDING_MONTHS}-month Starter offer has ended. Upgrade to {STARTER_PLAN_NAME} (
-              {SEO_PLAN_LABEL}) to keep unlimited AI SEO and the SEO Suite, or continue on{" "}
-              {FREE_PLAN_NAME}.
-            </s-text>
-          </s-section>
-        ) : null}
-
         <s-section heading="Current plan">
           <s-stack direction="block" gap="small-200">
             <s-text>
-              <strong>Plan:</strong> {currentPlanLabel(plan, effectivePlan, founding)}
+              <strong>Plan:</strong> {currentPlanLabel(plan, effectivePlan)}
             </s-text>
             {hasSeo ? (
               <s-text tone="neutral">AI SEO: unlimited (within fair use).</s-text>
@@ -178,42 +145,45 @@ export default function BillingPlansPage() {
         </s-section>
 
         <s-section heading="Available plans">
-          <s-stack direction="block" gap="base">
-            <div>
-              <s-text>
-                <strong>Free — {FREE_PLAN_NAME}</strong>
-              </s-text>
-              <s-unordered-list>
+          <div className="seoi-plan-grid">
+            <article className="seoi-plan-card">
+              <h3>Free — {FREE_PLAN_NAME}</h3>
+              <div className="seoi-plan-card__price">$0 · Free forever</div>
+              <ul>
                 {PLAN_FEATURES.free.map((line) => (
-                  <s-list-item key={line}>{line}</s-list-item>
+                  <li key={line}>{line}</li>
                 ))}
-              </s-unordered-list>
-            </div>
-            <div>
-              <s-text>
-                <strong>Starter — {STARTER_PLAN_NAME}</strong> ({SEO_PLAN_LABEL}, 30-day trial)
-              </s-text>
-              <s-text tone="neutral">
-                First {FOUNDING_MEMBER_LIMIT} stores: Starter free for {FOUNDING_MONTHS} months,
-                then {SEO_PLAN_LABEL} or Free.
-              </s-text>
-              <s-unordered-list>
+              </ul>
+            </article>
+            <article className="seoi-plan-card seoi-plan-card--featured">
+              <span className="seoi-plan-card__badge">Best value</span>
+              <h3>Starter — {STARTER_PLAN_NAME}</h3>
+              <div className="seoi-plan-card__price">
+                {SEO_PLAN_LABEL} · 30-day trial
+              </div>
+              <p className="seoi-tool-card__meta">
+                Launch yearly pricing for the first {LAUNCH_STORE_TARGET} stores.
+                Existing subscriptions continue to match after regular pricing
+                is introduced.
+              </p>
+              <ul>
                 {PLAN_FEATURES.starter.map((line) => (
-                  <s-list-item key={line}>{line}</s-list-item>
+                  <li key={line}>{line}</li>
                 ))}
-              </s-unordered-list>
-            </div>
-            <div>
-              <s-text>
-                <strong>Pro — {PRO_PLAN_NAME}</strong> ({AI_IMAGE_PLAN_LABEL}, 30-day trial)
-              </s-text>
-              <s-unordered-list>
+              </ul>
+            </article>
+            <article className="seoi-plan-card">
+              <h3>Pro — {PRO_PLAN_NAME}</h3>
+              <div className="seoi-plan-card__price">
+                {AI_IMAGE_PLAN_LABEL} · 30-day trial
+              </div>
+              <ul>
                 {PLAN_FEATURES.pro.map((line) => (
-                  <s-list-item key={line}>{line}</s-list-item>
+                  <li key={line}>{line}</li>
                 ))}
-              </s-unordered-list>
-            </div>
-          </s-stack>
+              </ul>
+            </article>
+          </div>
         </s-section>
 
         <s-section heading="Managed pricing">

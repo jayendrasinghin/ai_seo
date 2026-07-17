@@ -42,7 +42,7 @@ Current description (may be empty, HTML allowed):
 ${plainDescription || "(no current description provided)"}
 `;
 
-  let raw: any = {};
+  let raw: Partial<AiCopyResult> = {};
   try {
     const response = await openai.responses.create({
       prompt: { id: OPENAI_PROMPT_ID, version: "1" },
@@ -51,7 +51,7 @@ ${plainDescription || "(no current description provided)"}
     });
 
     if (response.output_text) {
-      raw = JSON.parse(response.output_text);
+      raw = JSON.parse(response.output_text) as Partial<AiCopyResult>;
     }
   } catch {
     // Fallback path while prompt deployments/versions propagate.
@@ -67,7 +67,7 @@ ${plainDescription || "(no current description provided)"}
     const content = completion.choices[0]?.message?.content;
     if (content) {
       try {
-        raw = JSON.parse(content);
+        raw = JSON.parse(content) as Partial<AiCopyResult>;
       } catch {
         raw = {};
       }
@@ -260,9 +260,11 @@ Write a NEW alt that is different from the current alt and specific to this prod
     ],
   });
 
-  let parsed: any = {};
+  let parsed: Partial<{ altText: string }> = {};
   try {
-    parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
+    parsed = JSON.parse(
+      completion.choices[0]?.message?.content || "{}",
+    ) as Partial<{ altText: string }>;
   } catch {
     parsed = {};
   }

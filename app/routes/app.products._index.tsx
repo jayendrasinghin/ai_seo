@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useLocation } from "react-router";
@@ -144,11 +143,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-const pageShellStyle: CSSProperties = {
-  backgroundColor: "#f1f2f4",
-  minHeight: "100%",
-};
-
 function useDebouncedValue<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -259,57 +253,70 @@ export default function ProductsListPage() {
       : null;
 
   return (
-    <div style={pageShellStyle}>
+    <div>
       <s-page heading="Products">
-        <s-section>
-          <s-text tone="subdued">
-            AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
-          </s-text>
-        </s-section>
+        <div className="seoi-page-hero">
+          <div className="seoi-page-hero__content">
+            <span className="seoi-eyebrow">Product SEO workspace</span>
+            <h2>Optimize every product from one place.</h2>
+            <p>
+              Find products quickly, review their content, and generate
+              search-ready titles, descriptions, metadata, and images.
+            </p>
+          </div>
+          <span className="seoi-status">
+            {usage.aiUsed} / {usage.freeQuotaLimit} AI used
+          </span>
+        </div>
 
-        <s-section heading="Search">
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.5rem",
-              alignItems: "flex-end",
-              maxWidth: "32rem",
-            }}
-          >
-            <label style={{ flex: "1", minWidth: "12rem" }}>
-              <s-text font-weight="bold">Find products</s-text>
+        <section className="seoi-section-card">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Find a product</h3>
+              <p>Search by product title, SKU, type, or vendor.</p>
+            </div>
+          </div>
+          <div className="seoi-toolbar">
+            <div className="seoi-toolbar__search">
+              <label htmlFor="product-search">Search products</label>
               <input
+                id="product-search"
                 type="search"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Type to filter — title, SKU, type…"
                 autoComplete="off"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: "0.35rem",
-                  padding: "0.5rem",
-                }}
               />
-            </label>
+            </div>
             <s-button type="button" variant="secondary" onClick={commitSearchToUrl}>
               Update URL
             </s-button>
           </div>
           {q ? (
-            <s-text tone="subdued">
+            <s-text tone="neutral">
               Filter: &quot;{q}&quot; — up to {pageSize} per page.
             </s-text>
           ) : (
-            <s-text tone="subdued">
+            <s-text tone="neutral">
               Up to {pageSize} products per page, newest updated first. Results
               refresh as you type.
             </s-text>
           )}
-        </s-section>
+        </section>
 
-        <s-section>
+        <section className="seoi-section-card">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Product catalog</h3>
+              <p>
+                Open a product to optimize its content, metadata, images, and
+                inventory.
+              </p>
+            </div>
+            {!searchingLive ? (
+              <span className="seoi-status">{listProducts.length} shown</span>
+            ) : null}
+          </div>
           {errors && (
             <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
               <s-text tone="critical">
@@ -319,11 +326,11 @@ export default function ProductsListPage() {
           )}
 
           {!errors && searchingLive && (
-            <s-text tone="subdued">Loading matches…</s-text>
+            <s-text tone="neutral">Loading matches…</s-text>
           )}
 
           {!errors && !searchingLive && listProducts.length === 0 && (
-            <s-text tone="subdued">
+            <s-text tone="neutral">
               {q
                 ? "No products match your search. Try different keywords."
                 : "No products found yet. Create a product in your store to get started."}
@@ -331,7 +338,8 @@ export default function ProductsListPage() {
           )}
 
           {!errors && !searchingLive && listProducts.length > 0 && (
-            <s-stack direction="block" gap="base">
+            <>
+              <div className="seoi-product-list">
               {listProducts.map((product) => {
                 const pathSeg = productPathSegmentFromGid(product.id);
                 const firstImageNode = product.images?.nodes?.[0];
@@ -349,61 +357,36 @@ export default function ProductsListPage() {
                   product.title;
 
                 return (
-                  <s-box
-                    key={product.id}
-                    padding="base"
-                    borderWidth="base"
-                    borderRadius="base"
-                    background="subdued"
-                  >
-                    <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                      <div
-                        style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: 8,
-                          overflow: "hidden",
-                          background: "var(--p-color-bg-surface-secondary)",
-                          flexShrink: 0,
-                        }}
-                      >
+                  <article className="seoi-product-row" key={product.id}>
+                      <div className="seoi-product-row__image">
                         {thumbUrl ? (
                           <img
                             src={thumbUrl}
                             alt={thumbAlt}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
                           />
-                        ) : null}
+                        ) : (
+                          "No image"
+                        )}
                       </div>
-                      <div style={{ minWidth: 0 }}>
+                      <div className="seoi-product-row__content">
                         <EmbeddedNavLink
                           hrefPathname={`/app/products/${pathSeg}`}
-                          style={{
-                            display: "inline-block",
-                            fontWeight: 600,
-                            color: "var(--p-color-text-link, #2c6ecb)",
-                            textDecoration: "none",
-                          }}
+                          className="seoi-product-row__title"
+                          style={{ textDecoration: "none", color: "inherit" }}
                         >
                           {product.title}
                         </EmbeddedNavLink>
-                        <s-text tone="subdued" as="p" style={{ margin: "0.25rem 0 0" }}>
-                          Status: {product.status}
-                        </s-text>
+                        <div className="seoi-product-row__meta">
+                          <span className="seoi-badge">{product.status}</span>
+                        </div>
                       </div>
-                    </div>
-                  </s-box>
+                      <span className="seoi-product-row__arrow">›</span>
+                  </article>
                 );
               })}
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  marginTop: "0.5rem",
-                }}
-              >
+              </div>
+              <div className="seoi-pagination">
+                <div className="seoi-pagination__actions">
                 <s-button
                   type="button"
                   variant="secondary"
@@ -424,15 +407,16 @@ export default function ProductsListPage() {
                 >
                   Next
                 </s-button>
-                <s-text tone="subdued">
+                </div>
+                <s-text tone="neutral">
                   {pageInfo.hasPreviousPage || pageInfo.hasNextPage
                     ? "More pages available — use Previous / Next."
                     : "End of list for this search."}
                 </s-text>
               </div>
-            </s-stack>
+            </>
           )}
-        </s-section>
+        </section>
       </s-page>
     </div>
   );

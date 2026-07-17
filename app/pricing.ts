@@ -13,12 +13,7 @@
 export const FREE_PLAN_NAME = "SEO Starter Free";
 export const FREE_AI_SEO_MONTHLY = 100;
 
-/**
- * Optional app-side founding slots (Starter free for N months).
- * Prefer launch yearly pricing in Partner Dashboard for first ~200 installs.
- */
-export const FOUNDING_MEMBER_LIMIT = 99;
-export const FOUNDING_MONTHS = 12;
+/** Raise launch yearly prices in Partner Dashboard after this acquisition target. */
 export const LAUNCH_STORE_TARGET = 200;
 
 /** Starter — AI SEO Starter */

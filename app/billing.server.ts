@@ -78,7 +78,7 @@ export async function syncStoreUsagePlanFromShopify(
   const json = await response.json();
   const plan = derivePlanFromActiveSubscriptions(json.data);
 
-  // Only sync Shopify plan. Founding-member fields are never cleared here.
+  // Only sync the Shopify subscription plan; usage counters stay untouched.
   await prisma.storeUsage.upsert({
     where: { shop },
     create: { shop, plan },

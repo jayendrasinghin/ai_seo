@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -10,11 +10,6 @@ import { productPathSegmentFromGid } from "../shopify-ids";
 import { applyAvailableQuantityToAllLocations } from "../inventory-locations.server";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-
-const pageShellStyle: CSSProperties = {
-  backgroundColor: "#f1f2f4",
-  minHeight: "100%",
-};
 
 function useDebouncedValue<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -746,8 +741,20 @@ export default function ManagePage() {
     0;
 
   return (
-    <div style={pageShellStyle}>
+    <div>
       <s-page heading="Stock &amp; new product">
+        <div className="seoi-page-hero">
+          <div className="seoi-page-hero__content">
+            <span className="seoi-eyebrow">Catalog operations</span>
+            <h2>Manage inventory and launch products confidently.</h2>
+            <p>
+              Update variant quantities across locations or create a complete
+              Shopify product without leaving the app.
+            </p>
+          </div>
+          <span className="seoi-status">Shopify synced</span>
+        </div>
+
         <s-section>
           <EmbeddedNavLink hrefPathname="/app">← Home</EmbeddedNavLink>
         </s-section>
@@ -808,17 +815,17 @@ export default function ManagePage() {
                 </s-button>
               </div>
               {productSearch ? (
-                <s-text tone="subdued">
+                <s-text tone="neutral">
                   Filter: &quot;{productSearch}&quot; — up to 25 in the dropdown.
                 </s-text>
               ) : (
-                <s-text tone="subdued">
+                <s-text tone="neutral">
                   Up to 25 products in the dropdown, newest updated first. Results
                   refresh as you type.
                 </s-text>
               )}
               {searchingLive ? (
-                <s-text tone="subdued">Loading matches…</s-text>
+                <s-text tone="neutral">Loading matches…</s-text>
               ) : null}
             </div>
 

@@ -14,6 +14,7 @@ import { EmbeddedNavLink } from "../embedded-nav-link";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { generateImageAltText } from "../ai.server";
 import { getEffectivePlan, planSeoUsesFreeQuota } from "../plan-helpers";
@@ -39,7 +40,7 @@ function normalizeAlt(input: string): string {
   return input.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-async function runImageSeoScan(admin: any, shop: string) {
+async function runImageSeoScan(admin: AdminApiContext, shop: string) {
   const scanRun = await prisma.imageScanRun.create({
     data: { shop, status: "running" },
   });
@@ -502,11 +503,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-const pageShellStyle: CSSProperties = {
-  backgroundColor: "#f1f2f4",
-  minHeight: "100%",
-};
-
 export default function Index() {
   const { stats, usage, errors, latestScanRun, latestIssues, issueCounts, issueTypeFilter } =
     useLoaderData<typeof loader>();
@@ -524,6 +520,17 @@ export default function Index() {
   const isApplyingSuggestions =
     fetcher.state === "submitting" &&
     fetcher.formData?.get("intent") === "apply_alt_suggestions";
+  const imageHealthScore = latestScanRun?.imagesScanned
+    ? Math.max(
+        0,
+        Math.round(
+          ((latestScanRun.imagesScanned -
+            Math.min(latestScanRun.imagesScanned, latestScanRun.issuesOpen)) /
+            latestScanRun.imagesScanned) *
+            100,
+        ),
+      )
+    : 0;
 
   const visibleIssueIds = useMemo(() => latestIssues.map((i) => i.id), [latestIssues]);
   const selectedVisibleCount = selectedIssueIds.filter((id) =>
@@ -535,7 +542,7 @@ export default function Index() {
   useEffect(() => {
     // Keep selection valid when filter/data changes.
     setSelectedIssueIds((prev) => prev.filter((id) => visibleIssueIds.includes(id)));
-  }, [visibleIssueIds.join("|")]);
+  }, [visibleIssueIds]);
 
   useEffect(() => {
     if (!fetcher.data) return;
@@ -572,11 +579,23 @@ export default function Index() {
       setActionMessage(fetcher.data.message);
       return;
     }
-  }, [fetcher.data]);
+  }, [fetcher.data, revalidator]);
 
   return (
-    <div style={pageShellStyle}>
-      <s-page heading="Product Image SEO Optimizer">
+    <div>
+      <s-page heading="SEO dashboard">
+        <div className="seoi-page-hero">
+          <div className="seoi-page-hero__content">
+            <span className="seoi-eyebrow">AI-powered store optimization</span>
+            <h2>Find SEO issues. Fix them faster.</h2>
+            <p>
+              Scan product images, generate accessible ALT text, and monitor the
+              SEO work that improves storefront visibility.
+            </p>
+          </div>
+          <span className="seoi-status">Store connected</span>
+        </div>
+
         {errors && (
           <s-section>
             <s-text tone="critical">
@@ -585,88 +604,113 @@ export default function Index() {
           </s-section>
         )}
 
-        <s-section>
-          <s-text tone="subdued">
-            AI used: {usage.aiUsed} / {usage.freeQuotaLimit}
-          </s-text>
-        </s-section>
-
-        <s-section heading="Scan all products">
-          <s-stack direction="block" gap="base">
-            <s-text tone="subdued">
-              Scan up to 50 products and 10 images each in this first version. We detect
-              missing alt text, short alt text, and duplicate alt text.
-            </s-text>
-            <s-button
-              variant="primary"
-              onClick={() => fetcher.submit({ intent: "scan_now" }, { method: "post" })}
-              {...(isScanning ? { loading: true } : {})}
-            >
-              {isScanning ? "Scanning..." : "Scan now"}
-            </s-button>
-
-            {fetcher.data?.status === "scan_completed" && (
-              <s-text tone="success">
-                Scan completed: {fetcher.data.summary.productsScanned} products,{" "}
-                {fetcher.data.summary.imagesScanned} images,{" "}
-                {fetcher.data.summary.issuesOpen} issues found. Refresh to view latest list.
-              </s-text>
-            )}
-
-            {fetcher.data?.status === "scan_failed" && (
-              <s-text tone="critical">{fetcher.data.message}</s-text>
-            )}
-            {actionMessage ? <s-text tone="subdued">{actionMessage}</s-text> : null}
-          </s-stack>
-        </s-section>
-
-        <s-section heading="Overview">
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-              gap: "0.75rem",
-            }}
-          >
-            {[
-              { label: "Products in sample", value: stats.productsScanned },
-              { label: "Missing alt (first image)", value: stats.imagesMissingAlt },
-              { label: "AI SEO generations", value: stats.aiSeoUsed },
-              { label: "AI images used", value: stats.aiImageUsed },
-            ].map((card) => (
-              <s-box
-                key={card.label}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
+        <div className="seoi-dashboard-grid">
+          <section className="seoi-panel seoi-panel--accent">
+            <div className="seoi-panel__top">
+              <div>
+                <div className="seoi-panel__icon">AI</div>
+                <h3>Scan product image SEO</h3>
+                <p className="seoi-panel__copy">
+                  Review up to 50 products and 10 images each for missing,
+                  duplicate, or weak ALT text. Turn every issue into an
+                  actionable AI suggestion.
+                </p>
+              </div>
+              <button
+                className="seoi-primary-action"
+                type="button"
+                disabled={isScanning}
+                onClick={() =>
+                  fetcher.submit({ intent: "scan_now" }, { method: "post" })
+                }
               >
-                <s-text
-                  tone="subdued"
-                  as="p"
-                  style={{ margin: "0 0 0.35rem", fontSize: "0.8125rem" }}
-                >
-                  {card.label}
-                </s-text>
-                <s-text
-                  font-weight="bold"
-                  as="p"
-                  style={{ margin: 0, fontSize: "1.5rem", lineHeight: 1.2 }}
-                >
-                  {card.value}
-                </s-text>
-              </s-box>
-            ))}
-          </div>
-        </s-section>
+                {isScanning ? "Scanning…" : "Analyze store"}
+              </button>
+            </div>
+            {isScanning ? (
+              <div className="seoi-scan-progress" aria-label="Scan in progress">
+                <span />
+              </div>
+            ) : null}
+            {fetcher.data?.status === "scan_failed" ? (
+              <p>{fetcher.data.message}</p>
+            ) : null}
+            {actionMessage ? <p>{actionMessage}</p> : null}
+          </section>
 
-        <s-section heading="Latest scan results">
+          <section className="seoi-panel">
+            <div className="seoi-section-heading">
+              <div>
+                <h3>Image SEO health</h3>
+                <p>Based on the latest completed image scan.</p>
+              </div>
+            </div>
+            <div className="seoi-score-layout">
+              <div
+                className="seoi-score-ring"
+                style={{ "--score": imageHealthScore } as CSSProperties}
+                aria-label={`Image SEO health score ${imageHealthScore} out of 100`}
+              >
+                <span>
+                  <strong>{imageHealthScore}</strong>
+                  <small>/100</small>
+                </span>
+              </div>
+              <div className="seoi-score-details">
+                <strong>
+                  {latestScanRun
+                    ? `${latestScanRun.issuesOpen} open image issues`
+                    : "Run your first scan"}
+                </strong>
+                <span>
+                  {latestScanRun
+                    ? `${latestScanRun.imagesScanned} images checked across ${latestScanRun.productsScanned} products.`
+                    : "Your score and recommendations will appear here."}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="seoi-stat-grid">
+          {[
+            { label: "Products reviewed", value: stats.productsScanned },
+            { label: "Missing ALT", value: stats.imagesMissingAlt },
+            { label: "AI SEO generations", value: stats.aiSeoUsed },
+            {
+              label: "AI usage remaining",
+              value: Math.max(0, usage.freeQuotaLimit - usage.aiUsed),
+            },
+          ].map((card) => (
+            <div className="seoi-stat-card" key={card.label}>
+              <div className="seoi-stat-card__label">{card.label}</div>
+              <div className="seoi-stat-card__value">{card.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <section className="seoi-section-card">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Latest scan results</h3>
+              <p>
+                Review image issues, create AI suggestions, and apply approved
+                ALT text directly to Shopify.
+              </p>
+            </div>
+            <span className="seoi-status">
+              {latestScanRun?.status ?? "No scan"}
+            </span>
+          </div>
           <p style={{ margin: "0 0 0.75rem", maxWidth: "42rem", color: "#6d7175", fontSize: "0.875rem" }}>
             Alt updates use Shopify media IDs. Apply now auto-generates missing suggestions for
             selected rows.
           </p>
           {!latestScanRun ? (
-            <s-text tone="subdued">No scan has run yet. Click Scan now to start.</s-text>
+            <div className="seoi-empty-state">
+              No scan has run yet. Select <strong>Analyze store</strong> to
+              create your first image SEO report.
+            </div>
           ) : (
             <s-stack direction="block" gap="base">
               <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
@@ -731,7 +775,7 @@ export default function Index() {
               </div>
 
               {latestIssues.length === 0 ? (
-                <s-text tone="subdued">No issues in latest run.</s-text>
+                <s-text tone="neutral">No issues in latest run.</s-text>
               ) : (
                 <s-stack direction="block" gap="small-200">
                   <fetcher.Form method="post">
@@ -840,7 +884,7 @@ export default function Index() {
                             }
                           }}
                         />
-                        <s-text tone="subdued">
+                        <s-text tone="neutral">
                           Select all on page ({visibleIssueIds.length})
                         </s-text>
                       </label>
@@ -885,7 +929,7 @@ export default function Index() {
                                 );
                               }}
                             />
-                            <s-text tone="subdued" as="span">
+                            <s-text tone="neutral">
                               Select
                             </s-text>
                           </label>
@@ -893,11 +937,11 @@ export default function Index() {
                             {issue.issueType.replaceAll("_", " ")} —{" "}
                             {issue.productTitle || "Product"}
                           </s-text>
-                          <s-text tone="subdued" as="p" style={{ margin: "0.2rem 0 0" }}>
+                          <s-text tone="neutral">
                             Current alt: {issue.currentAlt?.trim() || "(empty)"}
                           </s-text>
                           {issue.suggestedAlt ? (
-                            <s-text as="p" style={{ margin: "0.2rem 0 0" }}>
+                            <s-text>
                               Suggested alt: {issue.suggestedAlt}
                             </s-text>
                           ) : null}
@@ -927,10 +971,10 @@ export default function Index() {
               )}
             </s-stack>
           )}
-        </s-section>
+        </section>
 
         <s-section heading="Workflows">
-          <s-text tone="subdued" as="p" style={{ margin: "0 0 1rem", maxWidth: "42rem" }}>
+          <s-text tone="neutral">
             Pick a workflow below. Most merchants start with products, then use AI SEO and AI
             images on each product page.
           </s-text>
@@ -969,7 +1013,7 @@ export default function Index() {
                   marginBottom: "0.5rem",
                 }}
               >
-                <s-text font-weight="bold" style={{ fontSize: "1.0625rem" }}>
+                <s-text font-weight="bold">
                   Product tools
                 </s-text>
                 <span
@@ -985,7 +1029,7 @@ export default function Index() {
                   Main
                 </span>
               </div>
-              <s-text tone="subdued" as="p" style={{ margin: "0 0 0.85rem", lineHeight: 1.5 }}>
+              <s-text tone="neutral">
                 Browse your catalog and open any product to fix image SEO, run AI SEO, or
                 generate AI images.
               </s-text>

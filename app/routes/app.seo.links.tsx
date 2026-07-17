@@ -9,6 +9,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import { runBrokenLinkScan } from "../link-crawl.server";
 import { createUrlRedirect } from "../redirects.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
@@ -148,6 +149,12 @@ export default function BrokenLinksPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Store health"
+        title="Find links that cost shoppers and search engines."
+        description="Scan catalog content for broken destinations, review each source, and repair eligible store URLs with a redirect."
+        status={latestScan ? `${latestScan.brokenCount} issues` : "Not scanned"}
+      />
 
       <s-section>
         <s-text tone="neutral">

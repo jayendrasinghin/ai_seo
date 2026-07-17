@@ -6,10 +6,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { EmbeddedNavLink } from "../embedded-nav-link";
-import {
-  getOrCreateSeoSettings,
-  storefrontProxyUrl,
-} from "../seo-settings.server";
+import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
 import { isPartnerDevelopmentStore } from "../billing.server";
@@ -44,23 +41,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       autoRedirectOnDelete: settings.autoRedirectOnDelete,
     },
     latestLinkScan,
-    urls: {
-      sitemap: storefrontProxyUrl(shop, "/sitemap"),
-      llms: storefrontProxyUrl(shop, "/llms.txt"),
-    },
   };
 };
 
 export default function SeoHubPage() {
-  const { settings, urls, suiteUnlocked, plan, latestLinkScan } =
+  const { settings, suiteUnlocked, plan, latestLinkScan } =
     useLoaderData<typeof loader>();
 
   return (
     <s-page heading="SEO Suite">
+      <div className="seoi-page-hero">
+        <div className="seoi-page-hero__content">
+          <span className="seoi-eyebrow">Technical SEO toolkit</span>
+          <h2>Everything your storefront needs to stay discoverable.</h2>
+          <p>
+            Index content faster, protect valuable URLs, publish structured data,
+            and keep product images lean—all from one workspace.
+          </p>
+        </div>
+        <span className="seoi-status">
+          {suiteUnlocked ? "Suite unlocked" : "Free preview"}
+        </span>
+      </div>
+
       <s-section>
         <s-text tone="neutral">
-          Phase 1–3: IndexNow, redirects, JSON-LD, sitemap, llms.txt, broken links, auto-redirect,
-          page speed, and image optimize.
+          IndexNow, redirects, JSON-LD, sitemap, llms.txt, broken links,
+          auto-redirect, page speed, and image optimization.
         </s-text>
         {!suiteUnlocked ? (
           <s-text tone="caution">
@@ -72,162 +79,97 @@ export default function SeoHubPage() {
       </s-section>
 
       <s-section heading="Tools">
-        <s-stack direction="block" gap="base">
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>IndexNow</s-heading>
-              <s-text tone="neutral">
-                Notify Bing &amp; Yandex when product URLs change.{" "}
-                {settings.indexNowEnabled ? "Enabled" : "Disabled"}.
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/indexnow" variant="button">
-                  Open IndexNow
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+        <div className="seoi-tool-grid">
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">↗</div>
+            <h3>IndexNow</h3>
+            <p>Notify Bing and Yandex automatically when product URLs change.</p>
+            <div className="seoi-tool-card__meta">
+              Status: {settings.indexNowEnabled ? "Enabled" : "Disabled"}
+            </div>
+            <EmbeddedNavLink hrefPathname="/app/seo/indexnow" variant="button">
+              Open IndexNow
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Redirects (301)</s-heading>
-              <s-text tone="neutral">
-                Create and manage 301 redirects to retain traffic from changed URLs.
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/redirects" variant="button">
-                  Manage redirects
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">301</div>
+            <h3>URL redirects</h3>
+            <p>Create and manage permanent redirects that preserve valuable traffic.</p>
+            <EmbeddedNavLink hrefPathname="/app/seo/redirects" variant="button">
+              Manage redirects
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Broken links &amp; 404s</s-heading>
-              <s-text tone="neutral">
-                Scan content for broken hrefs.
-                {latestLinkScan
-                  ? ` Last scan: ${latestLinkScan.status}, ${latestLinkScan.brokenCount} broken/error.`
-                  : " No scan yet."}
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/links" variant="button">
-                  Scan links
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">!</div>
+            <h3>Broken links &amp; 404s</h3>
+            <p>Scan product, collection, and page content for URLs that need attention.</p>
+            <div className="seoi-tool-card__meta">
+              {latestLinkScan
+                ? `Last scan: ${latestLinkScan.status} · ${latestLinkScan.brokenCount} issues`
+                : "No scan run yet"}
+            </div>
+            <EmbeddedNavLink hrefPathname="/app/seo/links" variant="button">
+              Scan links
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Auto-redirect on delete</s-heading>
-              <s-text tone="neutral">
-                {settings.autoRedirectOnDelete
-                  ? "Enabled — 301 when products are deleted."
-                  : "Disabled."}
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/auto-redirect" variant="button">
-                  Configure
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">⤴</div>
+            <h3>Automatic redirects</h3>
+            <p>Protect deleted product URLs by sending visitors to a useful destination.</p>
+            <div className="seoi-tool-card__meta">
+              {settings.autoRedirectOnDelete ? "Enabled" : "Disabled"}
+            </div>
+            <EmbeddedNavLink hrefPathname="/app/seo/auto-redirect" variant="button">
+              Configure
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>JSON-LD schemas</s-heading>
-              <s-text tone="neutral">
-                Product, BreadcrumbList, Organization, WebSite — enabled in the{" "}
-                <strong>theme editor App embeds</strong> (not this left nav).{" "}
-                {settings.jsonLdEnabled ? "Marked enabled" : "Marked disabled"}.
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/schema" variant="button">
-                  Setup schema
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">{"{}"}</div>
+            <h3>JSON-LD schemas</h3>
+            <p>Product, breadcrumb, organization, and website structured data.</p>
+            <div className="seoi-tool-card__meta">
+              {settings.jsonLdEnabled ? "Marked enabled" : "Marked disabled"}
+            </div>
+            <EmbeddedNavLink hrefPathname="/app/seo/schema" variant="button">
+              Set up schema
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Sitemap &amp; llms.txt</s-heading>
-              <s-text tone="neutral">
-                HTML sitemap and AI-friendly llms.txt on your storefront.
-              </s-text>
-              <s-text>
-                Sitemap:{" "}
-                {settings.sitemapEnabled ? (
-                  <a href={urls.sitemap} target="_blank" rel="noreferrer">
-                    {urls.sitemap}
-                  </a>
-                ) : (
-                  "disabled"
-                )}
-              </s-text>
-              <s-text>
-                llms.txt:{" "}
-                {settings.llmsTxtEnabled ? (
-                  <a href={urls.llms} target="_blank" rel="noreferrer">
-                    {urls.llms}
-                  </a>
-                ) : (
-                  "disabled"
-                )}
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/sitemap" variant="button">
-                  Configure
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">≡</div>
+            <h3>Sitemap &amp; llms.txt</h3>
+            <p>Publish discovery files for shoppers, search engines, and AI agents.</p>
+            <div className="seoi-tool-card__meta">
+              Sitemap {settings.sitemapEnabled ? "on" : "off"} · llms.txt{" "}
+              {settings.llmsTxtEnabled ? "on" : "off"}
+            </div>
+            <EmbeddedNavLink hrefPathname="/app/seo/sitemap" variant="button">
+              Configure
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Page speed</s-heading>
-              <s-text tone="neutral">
-                Lazy-load images, preload hero, defer analytics scripts (theme App embed).
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/speed" variant="button">
-                  Open speed tools
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">⚡</div>
+            <h3>Page speed</h3>
+            <p>Lazy-load images, preload hero media, and defer analytics scripts.</p>
+            <EmbeddedNavLink hrefPathname="/app/seo/speed" variant="button">
+              Open speed tools
+            </EmbeddedNavLink>
+          </article>
 
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>Image optimize</s-heading>
-              <s-text tone="neutral">
-                Compress and resize product images, then replace media on Shopify.
-              </s-text>
-              <div style={{ marginTop: 4 }}>
-                <EmbeddedNavLink hrefPathname="/app/seo/images" variant="button">
-                  Optimize images
-                </EmbeddedNavLink>
-              </div>
-            </s-stack>
-          </s-box>
-        </s-stack>
-      </s-section>
-
-      <s-section heading="Roadmap">
-        <s-stack direction="block" gap="small-200">
-          <s-text>
-            <strong>Phase 1:</strong> IndexNow, redirects, JSON-LD, sitemap, llms.txt ✓
-          </s-text>
-          <s-text>
-            <strong>Phase 2:</strong> Broken-link crawl, auto-redirect on delete, richer schema ✓
-          </s-text>
-          <s-text>
-            <strong>Phase 3 (now):</strong> Image compress/resize, lazy load, script defer /
-            preload ✓
-          </s-text>
-        </s-stack>
+          <article className="seoi-tool-card">
+            <div className="seoi-tool-card__icon">◫</div>
+            <h3>Image optimization</h3>
+            <p>Compress and resize product media before replacing it in Shopify.</p>
+            <EmbeddedNavLink hrefPathname="/app/seo/images" variant="button">
+              Optimize images
+            </EmbeddedNavLink>
+          </article>
+        </div>
       </s-section>
     </s-page>
   );

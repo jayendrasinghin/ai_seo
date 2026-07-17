@@ -14,6 +14,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { runImageOptimizeBatch } from "../image-optimize.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
@@ -121,6 +122,12 @@ export default function ImageOptimizePage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Storefront performance"
+        title="Reduce image weight without leaving Shopify."
+        description="Resize and compress product media with controlled dimensions and quality, then review the savings from each run."
+        status={latest ? `Last run: ${latest.status}` : "Ready to optimize"}
+      />
 
       <s-section>
         <s-text tone="neutral">

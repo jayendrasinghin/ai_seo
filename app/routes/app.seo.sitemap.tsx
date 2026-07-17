@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
@@ -78,6 +79,12 @@ export default function SitemapSettingsPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Store discovery"
+        title="Make your catalog easier to understand."
+        description="Publish a human-friendly sitemap and an AI-readable llms.txt file from your storefront domain."
+        status={settings.sitemapEnabled || settings.llmsTxtEnabled ? "Publishing enabled" : "Disabled"}
+      />
 
       <s-section>
         <s-text tone="neutral">

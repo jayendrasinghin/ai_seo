@@ -33,8 +33,8 @@ const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSPro
     border: "none",
     background: "none",
     padding: 0,
-    color: "#2563eb",
-    textDecoration: "underline",
+    color: "#4f46e5",
+    textDecoration: "none",
     fontWeight: 600,
   },
   button: {
@@ -45,19 +45,20 @@ const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSPro
     boxSizing: "border-box",
     width: "fit-content",
     maxWidth: "fit-content",
-    height: "28px",
-    minHeight: "28px",
-    maxHeight: "28px",
-    padding: "0 10px",
-    borderRadius: 6,
-    fontWeight: 600,
-    fontSize: "12px",
-    lineHeight: "28px",
+    height: "38px",
+    minHeight: "38px",
+    maxHeight: "38px",
+    padding: "0 14px",
+    borderRadius: 10,
+    fontWeight: 700,
+    fontSize: "13px",
+    lineHeight: "38px",
     textDecoration: "none",
-    backgroundColor: "#2563eb",
-    border: "1px solid #1d4ed8",
+    backgroundColor: "#4f46e5",
+    border: "1px solid #4338ca",
     color: "#ffffff",
     whiteSpace: "nowrap",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
   },
   secondary: {
     display: "inline-flex",
@@ -67,18 +68,18 @@ const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSPro
     boxSizing: "border-box",
     width: "fit-content",
     maxWidth: "fit-content",
-    height: "28px",
-    minHeight: "28px",
-    maxHeight: "28px",
-    padding: "0 10px",
-    borderRadius: 6,
-    fontWeight: 600,
-    fontSize: "12px",
-    lineHeight: "28px",
+    height: "38px",
+    minHeight: "38px",
+    maxHeight: "38px",
+    padding: "0 14px",
+    borderRadius: 10,
+    fontWeight: 700,
+    fontSize: "13px",
+    lineHeight: "38px",
     textDecoration: "none",
     backgroundColor: "#ffffff",
-    border: "1px solid #c9cccf",
-    color: "#202223",
+    border: "1px solid #cbd5e1",
+    color: "#334155",
     whiteSpace: "nowrap",
   },
 };
@@ -101,9 +102,13 @@ export function EmbeddedNavLink({
   const fullHref = withEmbeddedSearch(hrefPathname, search);
 
   function handleClick(e: MouseEvent<HTMLButtonElement>) {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(fullHref, "_blank", "noopener,noreferrer");
       return;
     }
+    if (e.altKey || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     window.location.assign(fullHref);

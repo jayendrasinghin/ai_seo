@@ -8,6 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { ModernPageHeader } from "../ModernPageHeader";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
@@ -75,6 +76,12 @@ export default function SchemaPage() {
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
+      <ModernPageHeader
+        eyebrow="Structured data"
+        title="Help search engines understand your storefront."
+        description="Publish product, breadcrumb, organization, and website JSON-LD through a lightweight theme app embed."
+        status={jsonLdEnabled ? "Configured" : "Needs setup"}
+      />
 
       <s-section>
         <s-text tone="caution">
