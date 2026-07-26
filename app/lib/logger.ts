@@ -1,10 +1,15 @@
 import pino from "pino";
-import { getEnv } from "./env";
 
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = process.env.NODE_ENV === "development";
+
+function resolveLogLevel(): string {
+  return process.env.LOG_LEVEL || (isDev ? "debug" : "info");
+}
 
 export const logger = pino({
-  level: getEnv().LOG_LEVEL,
+  level: resolveLogLevel(),
+  // Never require pino-pretty in production — it is a devDependency and
+  // crashes the app when NODE_ENV is unset (common under PM2).
   ...(isDev
     ? {
         transport: {
