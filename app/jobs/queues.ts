@@ -13,24 +13,56 @@ export const QUEUE_NAMES = {
 } as const;
 
 let connection: ConnectionOptions | null = null;
+const queues = new Map<string, Queue>();
 
 export function getRedisConnection(): ConnectionOptions {
   if (!connection) {
     connection = new IORedis(getEnv().REDIS_URL, {
       maxRetriesPerRequest: null,
+      lazyConnect: true,
+      enableOfflineQueue: true,
     }) as unknown as ConnectionOptions;
   }
   return connection;
 }
 
-function createQueue(name: string): Queue {
-  return new Queue(name, { connection: getRedisConnection() });
+function getQueue(name: string): Queue {
+  let queue = queues.get(name);
+  if (!queue) {
+    queue = new Queue(name, { connection: getRedisConnection() });
+    queues.set(name, queue);
+  }
+  return queue;
 }
 
-export const webhookQueue = createQueue(QUEUE_NAMES.WEBHOOK);
-export const orderQueue = createQueue(QUEUE_NAMES.ORDER);
-export const paypalTrackingQueue = createQueue(QUEUE_NAMES.PAYPAL_TRACKING);
-export const historicalQueue = createQueue(QUEUE_NAMES.HISTORICAL);
+/** Lazy accessors — do not connect Redis until a job is actually enqueued. */
+export function getWebhookQueue(): Queue {
+  return getQueue(QUEUE_NAMES.WEBHOOK);
+}
+export function getOrderQueue(): Queue {
+  return getQueue(QUEUE_NAMES.ORDER);
+}
+export function getPaypalTrackingQueue(): Queue {
+  return getQueue(QUEUE_NAMES.PAYPAL_TRACKING);
+}
+export function getHistoricalQueue(): Queue {
+  return getQueue(QUEUE_NAMES.HISTORICAL);
+}
+
+/** @deprecated Prefer getWebhookQueue() — kept for older imports. */
+export const webhookQueue = {
+  add: (...args: Parameters<Queue["add"]>) => getWebhookQueue().add(...args),
+} as Pick<Queue, "add">;
+export const orderQueue = {
+  add: (...args: Parameters<Queue["add"]>) => getOrderQueue().add(...args),
+} as Pick<Queue, "add">;
+export const paypalTrackingQueue = {
+  add: (...args: Parameters<Queue["add"]>) =>
+    getPaypalTrackingQueue().add(...args),
+} as Pick<Queue, "add">;
+export const historicalQueue = {
+  add: (...args: Parameters<Queue["add"]>) => getHistoricalQueue().add(...args),
+} as Pick<Queue, "add">;
 
 export interface WebhookJobData {
   webhookEventId: string;
@@ -48,7 +80,7 @@ export interface OrderJobData {
 
 export async function enqueueWebhookJob(data: WebhookJobData): Promise<void> {
   const jobId = data.webhookEventId;
-  await webhookQueue.add("process-webhook", data, {
+  await getWebhookQueue().add("process-webhook", data, {
     jobId,
     removeOnComplete: 100,
     removeOnFail: 500,
@@ -59,7 +91,7 @@ export async function enqueueWebhookJob(data: WebhookJobData): Promise<void> {
 
 export async function enqueueOrderJob(data: OrderJobData): Promise<void> {
   const jobId = `${data.topic}:${data.orderGid}:${data.fulfillmentGid ?? "all"}`;
-  await orderQueue.add("process-order", data, {
+  await getOrderQueue().add("process-order", data, {
     jobId: payloadHash(jobId),
     removeOnComplete: 200,
     removeOnFail: 500,
@@ -78,7 +110,7 @@ export async function enqueueHistoricalSyncJob(
   data: HistoricalSyncJobData,
 ): Promise<void> {
   const jobId = `historical:${data.shopDomain}:${data.sinceIso}:${data.cursor ?? "start"}`;
-  await historicalQueue.add("sync-historical", data, {
+  await getHistoricalQueue().add("sync-historical", data, {
     jobId: payloadHash(jobId),
     removeOnComplete: 50,
     removeOnFail: 100,
@@ -89,7 +121,7 @@ export async function enqueuePayPalTrackingJob(
   data: PayPalTrackingJobData,
 ): Promise<void> {
   const jobId = `paypal:${data.shipmentSyncId}:${data.trackingNumber}`;
-  await paypalTrackingQueue.add("sync-tracking", data, {
+  await getPaypalTrackingQueue().add("sync-tracking", data, {
     jobId: payloadHash(jobId),
     removeOnComplete: 200,
     removeOnFail: 500,
