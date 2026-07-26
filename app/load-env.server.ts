@@ -31,20 +31,21 @@ if (!loaded) {
 }
 
 /**
- * Force OPENAI_* from `.env` so a shell-exported key cannot silently
- * diverge from the app (Node --env-file also does not override existing env).
- * Leaves Shopify CLI tunnel vars untouched.
+ * Force these keys from `.env` so a PM2/shell-exported value cannot silently
+ * diverge from the file (dotenv does not override existing env by default).
+ * Do NOT force SHOPIFY_APP_URL — `shopify app dev` tunnel URL must win.
  */
+const FORCE_FROM_ENV =
+  /^(OPENAI_[A-Z0-9_]+|SHOPIFY_API_KEY|SHOPIFY_API_SECRET|SCOPES)$/;
+
 if (envFilePath) {
   try {
     const text = readFileSync(envFilePath, "utf8");
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
-      const match = trimmed.match(
-        /^(OPENAI_[A-Z0-9_]+)\s*=\s*(.*)$/,
-      );
-      if (!match) continue;
+      const match = trimmed.match(/^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
+      if (!match || !FORCE_FROM_ENV.test(match[1])) continue;
       let value = match[2].trim();
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
