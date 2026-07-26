@@ -7,6 +7,7 @@ import type {
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { AiSpinner } from "../AiSpinner";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { SeoHomeButton } from "../HomeButton";
 import { productGidFromRouteParam, productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -1121,10 +1122,13 @@ export default function ProductPage() {
         <s-page
           heading={shopifyError ? "Could not load product" : "Product not found"}
         >
+      <SeoHomeButton />
           <s-section>
-            <EmbeddedNavLink hrefPathname="/app/products">
-              ← Back to product list
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <EmbeddedNavLink hrefPathname="/app/products" variant="secondary">
+              ← Products
             </EmbeddedNavLink>
+          </div>
           </s-section>
           {shopifyError ? (
             <s-section heading="Connection problem">
@@ -1165,9 +1169,11 @@ export default function ProductPage() {
       </div>
 
       <s-section>
-        <EmbeddedNavLink hrefPathname="/app/products">
-          ← Back to product list
-        </EmbeddedNavLink>
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <EmbeddedNavLink hrefPathname="/app/products" variant="secondary">
+            ← Products
+          </EmbeddedNavLink>
+        </div>
       </s-section>
       <s-section>
         <s-stack direction="block" gap="base">
@@ -1311,38 +1317,42 @@ export default function ProductPage() {
             </s-box>
           )}
 
-          <button
-            type="button"
-            disabled={isGeneratingSeo}
-            onClick={() => {
-              fetcher.submit({ intent: "generate" }, { method: "post" });
-            }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              backgroundColor: "#2563eb",
-              borderColor: "#2563eb",
-              color: "#ffffff",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderRadius: 8,
-              padding: "0.6rem 1rem",
-              fontWeight: 600,
-              fontSize: "0.875rem",
-              cursor: isGeneratingSeo ? "not-allowed" : "pointer",
-              opacity: isGeneratingSeo ? 0.9 : 1,
-            }}
-          >
-            {isGeneratingSeo ? (
-              <>
-                <AiSpinner size={16} variant="onDark" aria-hidden />
-                Generating…
-              </>
-            ) : (
-              "Generate SEO with AI"
-            )}
-          </button>
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <button
+              type="button"
+              disabled={isGeneratingSeo}
+              onClick={() => {
+                fetcher.submit({ intent: "generate" }, { method: "post" });
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                width: "auto",
+                maxWidth: "max-content",
+                backgroundColor: "#2563eb",
+                borderColor: "#2563eb",
+                color: "#ffffff",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderRadius: 8,
+                padding: "0.55rem 1rem",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                cursor: isGeneratingSeo ? "not-allowed" : "pointer",
+                opacity: isGeneratingSeo ? 0.9 : 1,
+              }}
+            >
+              {isGeneratingSeo ? (
+                <>
+                  <AiSpinner size={16} variant="onDark" aria-hidden />
+                  Generating…
+                </>
+              ) : (
+                "Generate with AI"
+              )}
+            </button>
+          </div>
 
           {fetcher.data?.status === "applied" &&
             fetcher.data.applySource !== "manual" && (
@@ -1381,47 +1391,51 @@ export default function ProductPage() {
               <s-heading>AI SEO description</s-heading>
               <s-text>{aiResult.seoDescription}</s-text>
 
-              <button
-                type="button"
-                disabled={isSavingAiSeoToProduct}
-                onClick={() => {
-                  fetcher.submit(
-                    {
-                      intent: "apply",
-                      applySource: "ai",
-                      descriptionHtml: aiResult.descriptionHtml,
-                      seoTitle: aiResult.seoTitle,
-                      seoDescription: aiResult.seoDescription,
-                    },
-                    { method: "post" },
-                  );
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  backgroundColor: "#2563eb",
-                  borderColor: "#2563eb",
-                  color: "#ffffff",
-                  borderWidth: 1,
-                  borderStyle: "solid",
-                  borderRadius: 8,
-                  padding: "0.55rem 1rem",
-                  fontWeight: 600,
-                  fontSize: "0.875rem",
-                  cursor: isSavingAiSeoToProduct ? "not-allowed" : "pointer",
-                  opacity: isSavingAiSeoToProduct ? 0.9 : 1,
-                }}
-              >
-                {isSavingAiSeoToProduct ? (
-                  <>
-                    <AiSpinner size={16} variant="onDark" aria-hidden />
-                    Saving…
-                  </>
-                ) : (
-                  "Save to product"
-                )}
-              </button>
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <button
+                  type="button"
+                  disabled={isSavingAiSeoToProduct}
+                  onClick={() => {
+                    fetcher.submit(
+                      {
+                        intent: "apply",
+                        applySource: "ai",
+                        descriptionHtml: aiResult.descriptionHtml,
+                        seoTitle: aiResult.seoTitle,
+                        seoDescription: aiResult.seoDescription,
+                      },
+                      { method: "post" },
+                    );
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    width: "auto",
+                    maxWidth: "max-content",
+                    backgroundColor: "#2563eb",
+                    borderColor: "#2563eb",
+                    color: "#ffffff",
+                    borderWidth: 1,
+                    borderStyle: "solid",
+                    borderRadius: 8,
+                    padding: "0.55rem 1rem",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                    cursor: isSavingAiSeoToProduct ? "not-allowed" : "pointer",
+                    opacity: isSavingAiSeoToProduct ? 0.9 : 1,
+                  }}
+                >
+                  {isSavingAiSeoToProduct ? (
+                    <>
+                      <AiSpinner size={16} variant="onDark" aria-hidden />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save to product"
+                  )}
+                </button>
+              </div>
 
             </>
           )}
@@ -1839,34 +1853,38 @@ export default function ProductPage() {
               />
             </label>
 
-            <button
-              type="submit"
-              disabled={isSavingManualSeo}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                backgroundColor: "#2563eb",
-                borderColor: "#2563eb",
-                color: "#ffffff",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderRadius: 8,
-                padding: "0.55rem 1rem",
-                fontWeight: 600,
-                cursor: isSavingManualSeo ? "not-allowed" : "pointer",
-                opacity: isSavingManualSeo ? 0.9 : 1,
-              }}
-            >
-              {isSavingManualSeo ? (
-                <>
-                  <AiSpinner size={16} variant="onDark" aria-hidden />
-                  Saving…
-                </>
-              ) : (
-                "Save manual SEO"
-              )}
-            </button>
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <button
+                type="submit"
+                disabled={isSavingManualSeo}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  width: "auto",
+                  maxWidth: "max-content",
+                  backgroundColor: "#2563eb",
+                  borderColor: "#2563eb",
+                  color: "#ffffff",
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderRadius: 8,
+                  padding: "0.55rem 1rem",
+                  fontWeight: 600,
+                  cursor: isSavingManualSeo ? "not-allowed" : "pointer",
+                  opacity: isSavingManualSeo ? 0.9 : 1,
+                }}
+              >
+                {isSavingManualSeo ? (
+                  <>
+                    <AiSpinner size={16} variant="onDark" aria-hidden />
+                    Saving…
+                  </>
+                ) : (
+                  "Save SEO"
+                )}
+              </button>
+            </div>
 
             {fetcher.data?.status === "applied" &&
               fetcher.data.applySource === "manual" && (
@@ -1928,31 +1946,37 @@ export default function ProductPage() {
             }}
           >
             <input type="hidden" name="intent" value="add_images" />
-            <button
-              type="submit"
-              disabled={
-                fetcher.state === "submitting" &&
-                fetcher.formData?.get("intent") === "add_images"
-              }
-              style={{
-                padding: "0.5rem 0.85rem",
-                fontWeight: 600,
-                borderRadius: 8,
-                border: "1px solid #cbd5e1",
-                background: "#f3f4f6",
-                color: "#111827",
-                cursor:
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <button
+                type="submit"
+                disabled={
                   fetcher.state === "submitting" &&
                   fetcher.formData?.get("intent") === "add_images"
-                    ? "not-allowed"
-                    : "pointer",
-              }}
-            >
-              {fetcher.state === "submitting" &&
-              fetcher.formData?.get("intent") === "add_images"
-                ? "Adding…"
-                : "Add images from URLs"}
-            </button>
+                }
+                style={{
+                  display: "inline-flex",
+                  width: "auto",
+                  maxWidth: "max-content",
+                  padding: "0.45rem 0.85rem",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#f3f4f6",
+                  color: "#111827",
+                  cursor:
+                    fetcher.state === "submitting" &&
+                    fetcher.formData?.get("intent") === "add_images"
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                {fetcher.state === "submitting" &&
+                fetcher.formData?.get("intent") === "add_images"
+                  ? "Adding…"
+                  : "Add from URLs"}
+              </button>
+            </div>
           </form>
 
           {fetcher.data?.status === "images_added" && (
@@ -1978,36 +2002,84 @@ export default function ProductPage() {
                 onChange={(e) =>
                   setUploadFileCount(e.currentTarget.files?.length ?? 0)
                 }
-              />
-              {uploadFileCount > 0 ? (
-                <s-text tone="neutral">
-                  {uploadFileCount} image
-                  {uploadFileCount === 1 ? "" : "s"} selected — ready to upload
-                </s-text>
-              ) : null}
-              <button
-                type="submit"
-                disabled={uploadFileCount === 0 || isUploadSubmitting}
                 style={{
-                  padding: "0.55rem 1rem",
-                  fontWeight: 600,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderStyle: "solid",
-                  borderColor: uploadFileCount > 0 ? "#2563eb" : "#cbd5e1",
-                  backgroundColor: uploadFileCount > 0 ? "#2563eb" : "#f3f4f6",
-                  color: uploadFileCount > 0 ? "#ffffff" : "#6b7280",
-                  cursor:
-                    uploadFileCount === 0 || isUploadSubmitting
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity: uploadFileCount === 0 ? 0.7 : 1,
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  padding: 0,
+                  margin: -1,
+                  overflow: "hidden",
+                  clip: "rect(0, 0, 0, 0)",
+                  whiteSpace: "nowrap",
+                  border: 0,
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "0.5rem",
                 }}
               >
-                {isUploadSubmitting
-                  ? "Uploading images…"
-                  : "Upload selected images"}
-              </button>
+                <button
+                  type="button"
+                  disabled={isUploadSubmitting}
+                  onClick={() => uploadFileInputRef.current?.click()}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    width: "auto",
+                    maxWidth: "max-content",
+                    padding: "0.45rem 0.85rem",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#334155",
+                    cursor: isUploadSubmitting ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Choose files
+                </button>
+                <span
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "#64748b",
+                  }}
+                >
+                  {uploadFileCount > 0
+                    ? `${uploadFileCount} image${uploadFileCount === 1 ? "" : "s"} selected`
+                    : "No file chosen"}
+                </span>
+                <button
+                  type="submit"
+                  disabled={uploadFileCount === 0 || isUploadSubmitting}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    width: "auto",
+                    maxWidth: "max-content",
+                    padding: "0.45rem 0.85rem",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderStyle: "solid",
+                    borderColor: uploadFileCount > 0 ? "#2563eb" : "#cbd5e1",
+                    backgroundColor: uploadFileCount > 0 ? "#2563eb" : "#f3f4f6",
+                    color: uploadFileCount > 0 ? "#ffffff" : "#6b7280",
+                    cursor:
+                      uploadFileCount === 0 || isUploadSubmitting
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity: uploadFileCount === 0 ? 0.7 : 1,
+                  }}
+                >
+                  {isUploadSubmitting ? "Uploading…" : "Upload"}
+                </button>
+              </div>
             </s-stack>
           </fetcher.Form>
 

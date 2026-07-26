@@ -7,7 +7,8 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
-
+import { logger } from "./lib/logger";
+import { paysyncShopWebhooks } from "./lib/webhooks.config";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -18,6 +19,25 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
+  // PaySync order/fulfillment/refund webhooks (registered afterAuth).
+  // Requires Protected Customer Data access in Partner Dashboard.
+  webhooks: paysyncShopWebhooks,
+  hooks: {
+    afterAuth: async ({ session }) => {
+      try {
+        await shopify.registerWebhooks({ session });
+        logger.info({ shop: session.shop }, "Shop webhooks registered");
+      } catch (error) {
+        logger.warn(
+          {
+            shop: session.shop,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "PaySync webhook registration failed — configure Protected Customer Data in Partner Dashboard, then reinstall",
+        );
+      }
+    },
+  },
   future: {
     expiringOfflineAccessTokens: true,
   },

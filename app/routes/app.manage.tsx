@@ -6,6 +6,7 @@ import type {
 } from "react-router";
 import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { SeoHomeButton } from "../HomeButton";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { applyAvailableQuantityToAllLocations } from "../inventory-locations.server";
 import {
@@ -1001,6 +1002,7 @@ export default function ManagePage() {
   return (
     <div>
       <s-page heading="Stock &amp; new product">
+        <SeoHomeButton />
         <div className="seoi-page-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">Catalog operations</span>
@@ -1013,10 +1015,6 @@ export default function ManagePage() {
           </div>
           <span className="seoi-status">Shopify synced</span>
         </div>
-
-        <s-section>
-          <EmbeddedNavLink hrefPathname="/app">← Home</EmbeddedNavLink>
-        </s-section>
 
         {error ? (
           <s-section heading="Could not load data">

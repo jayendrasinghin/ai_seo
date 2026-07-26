@@ -1,6 +1,7 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import "./ai-loading.css";
 import "./modern-ui.css";
+import "./support-ui.css";
 
 export default function App() {
   return (

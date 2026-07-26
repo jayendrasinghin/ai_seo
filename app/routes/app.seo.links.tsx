@@ -10,6 +10,7 @@ import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { ModernPageHeader } from "../ModernPageHeader";
+import { SeoHomeButton } from "../HomeButton";
 import { runBrokenLinkScan } from "../link-crawl.server";
 import { createUrlRedirect } from "../redirects.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
@@ -146,6 +147,7 @@ export default function BrokenLinksPage() {
 
   return (
     <s-page heading="Broken links">
+      <SeoHomeButton />
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>

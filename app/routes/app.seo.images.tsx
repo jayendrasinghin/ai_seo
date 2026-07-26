@@ -3,7 +3,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   useFetcher,
   useLoaderData,
@@ -15,6 +15,7 @@ import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { ModernPageHeader } from "../ModernPageHeader";
+import { SeoHomeButton } from "../HomeButton";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { runImageOptimizeBatch } from "../image-optimize.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
@@ -100,16 +101,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { status: "error" as const, message: "Unknown action." };
 };
 
+const SIZE_PRESETS = [800, 1200, 1600, 2048, 3000] as const;
+
 export default function ImageOptimizePage() {
   const { settings, latest, items, suiteUnlocked } =
     useLoaderData<typeof loader>();
   const { search } = useLocation();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
+  const [maxWidth, setMaxWidth] = useState(String(settings.imageMaxWidth));
+  const [quality, setQuality] = useState(String(settings.imageQuality));
   const message = fetcher.data?.message;
   const tone = fetcher.data?.status === "error" ? "critical" : "success";
   const running =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "optimize";
+  const saving =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "save";
+
+  useEffect(() => {
+    setMaxWidth(String(settings.imageMaxWidth));
+    setQuality(String(settings.imageQuality));
+  }, [settings.imageMaxWidth, settings.imageQuality]);
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.status === "ok") {
@@ -119,6 +131,7 @@ export default function ImageOptimizePage() {
 
   return (
     <s-page heading="Image optimize">
+      <SeoHomeButton />
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>
@@ -143,22 +156,59 @@ export default function ImageOptimizePage() {
         {message ? <s-text tone={tone}>{message}</s-text> : null}
       </s-section>
 
-      <s-section heading="Settings">
+      <s-section heading="Change image size">
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="save" />
+          <input type="hidden" name="imageMaxWidth" value={maxWidth} />
+          <input type="hidden" name="imageQuality" value={quality} />
           <s-stack direction="block" gap="base">
-            <s-text-field
-              name="imageMaxWidth"
-              label="Max width (px)"
-              value={String(settings.imageMaxWidth)}
-            />
-            <s-text-field
-              name="imageQuality"
-              label="JPEG quality (50–95)"
-              value={String(settings.imageQuality)}
-            />
-            <s-button type="submit" disabled={!suiteUnlocked}>
-              Save settings
+            <s-text tone="neutral">
+              Choose a max width (or type a custom size). Wider images are resized down to this
+              width; smaller images are not enlarged.
+            </s-text>
+            <s-stack direction="inline" gap="small-200">
+              {SIZE_PRESETS.map((preset) => (
+                <s-button
+                  key={preset}
+                  type="button"
+                  variant={Number(maxWidth) === preset ? "primary" : "secondary"}
+                  disabled={!suiteUnlocked}
+                  onClick={() => setMaxWidth(String(preset))}
+                >
+                  {preset}px
+                </s-button>
+              ))}
+            </s-stack>
+            <label htmlFor="image-max-width">
+              Max width (px)
+              <input
+                id="image-max-width"
+                type="number"
+                min={800}
+                max={4000}
+                step={1}
+                value={maxWidth}
+                disabled={!suiteUnlocked}
+                onChange={(e) => setMaxWidth(e.target.value)}
+                style={{ display: "block", width: "100%", marginTop: 6 }}
+              />
+            </label>
+            <label htmlFor="image-quality">
+              JPEG quality (50–95)
+              <input
+                id="image-quality"
+                type="number"
+                min={50}
+                max={95}
+                step={1}
+                value={quality}
+                disabled={!suiteUnlocked}
+                onChange={(e) => setQuality(e.target.value)}
+                style={{ display: "block", width: "100%", marginTop: 6 }}
+              />
+            </label>
+            <s-button type="submit" disabled={!suiteUnlocked || saving}>
+              {saving ? "Saving…" : "Save size settings"}
             </s-button>
           </s-stack>
         </fetcher.Form>

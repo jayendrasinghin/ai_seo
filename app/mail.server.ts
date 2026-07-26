@@ -12,11 +12,7 @@ type SendMailInput = {
 };
 
 export function mailConfigured(): boolean {
-  return Boolean(
-    process.env.RESEND_API_KEY?.trim() ||
-      process.env.SMTP_HOST?.trim() ||
-      process.env.MAIL_FROM?.trim(),
-  );
+  return Boolean(process.env.RESEND_API_KEY?.trim());
 }
 
 export async function sendMail(input: SendMailInput): Promise<{ ok: boolean; via: string }> {

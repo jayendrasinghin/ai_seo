@@ -332,3 +332,221 @@ model ImageOptimizeItem {
   @@index([shop, runId])
   @@index([shop, mediaId])
 }
+
+// ─── PaySync (PayPal tracking sync) ─────────────────────────────────────────
+
+model Shop {
+  id            String    @id @default(cuid())
+  shopDomain    String    @unique
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  paypalConnections   PayPalConnection[]
+  razorpayConnections RazorpayConnection[]
+  orderSyncs          OrderSync[]
+  providerMappings    ProviderMapping[]
+  webhookEvents       WebhookEvent[]
+  settings            ShopSettings?
+}
+
+model ShopSettings {
+  id                     String    @id @default(cuid())
+  shopId                 String    @unique
+  autoTaggingEnabled     Boolean   @default(true)
+  notifyBuyerDefault     Boolean   @default(true)
+  tagUnfulfilledPhysical Boolean   @default(true)
+  dataRetentionDays      Int       @default(365)
+  carrierMappings        Json      @default("{}")
+  onboardingCompletedAt  DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+enum PayPalMode {
+  SANDBOX
+  LIVE
+}
+
+model PayPalConnection {
+  id                    String     @id @default(cuid())
+  shopId                String
+  label                 String     @default("PayPal")
+  isDefault             Boolean    @default(false)
+  mode                  PayPalMode @default(SANDBOX)
+  encryptedClientId     String
+  encryptedClientSecret String
+  connectedAt           DateTime   @default(now())
+  lastValidatedAt       DateTime?
+  lastValidationError   String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@index([shopId, isDefault])
+}
+
+model RazorpayConnection {
+  id                  String    @id @default(cuid())
+  shopId              String
+  label               String    @default("Razorpay")
+  isDefault           Boolean   @default(false)
+  encryptedKeyId      String
+  encryptedKeySecret  String
+  connectedAt         DateTime  @default(now())
+  lastValidatedAt     DateTime?
+  lastValidationError String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@index([shopId, isDefault])
+}
+
+enum PaymentProvider {
+  paypal
+  shopify_payments
+  stripe
+  razorpay
+  cashfree
+  cod
+  manual
+  other
+}
+
+enum SyncStatus {
+  pending
+  queued
+  retrying
+  synced
+  needs_mapping
+  not_applicable
+  failed_permanent
+  failed
+}
+
+enum MappingSource {
+  AUTO
+  MANUAL
+  IMPORT
+}
+
+enum WebhookEventStatus {
+  received
+  processing
+  processed
+  failed
+  duplicate
+}
+
+model OrderSync {
+  id                String          @id @default(cuid())
+  shopId            String
+  shopifyOrderGid   String
+  shopifyOrderName  String
+  shopifyCreatedAt  DateTime?
+  customerName      String?
+  itemsSummary      String?
+  paymentProvider   PaymentProvider
+  paymentStatus     String
+  providerOrderId   String?
+  providerCaptureId String?
+  fulfillmentStatus String          @default("unfulfilled")
+  trackingStatus    String          @default("none")
+  syncStatus        SyncStatus      @default(pending)
+  lastError         String?
+  lastSyncedAt      DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  shop      Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shipments ShipmentSync[]
+
+  @@unique([shopId, shopifyOrderGid])
+  @@index([shopId, syncStatus])
+  @@index([shopId, paymentProvider])
+  @@index([updatedAt])
+  @@index([shopifyCreatedAt])
+}
+
+model ShipmentSync {
+  id                    String     @id @default(cuid())
+  orderSyncId           String
+  shopifyFulfillmentGid String?
+  trackingNumber        String
+  carrier               String
+  carrierRaw            String?
+  shipmentStatus        String     @default("pending")
+  paypalTrackerId       String?
+  syncStatus            SyncStatus @default(pending)
+  retryCount            Int        @default(0)
+  nextRetryAt           DateTime?
+  lastError             String?
+  syncedAt              DateTime?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  orderSync    OrderSync     @relation(fields: [orderSyncId], references: [id], onDelete: Cascade)
+  syncAttempts SyncAttempt[]
+
+  @@unique([orderSyncId, trackingNumber])
+  @@index([syncStatus, nextRetryAt])
+}
+
+model ProviderMapping {
+  id              String          @id @default(cuid())
+  shopId          String
+  shopifyOrderGid String
+  provider        PaymentProvider
+  providerOrderId String
+  mappingSource   MappingSource   @default(AUTO)
+  mappedBy        String?
+  verifiedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, shopifyOrderGid, provider])
+}
+
+model WebhookEvent {
+  id          String             @id @default(cuid())
+  shopId      String?
+  topic       String
+  webhookId   String?
+  payloadHash String
+  receivedAt  DateTime           @default(now())
+  processedAt DateTime?
+  status      WebhookEventStatus @default(received)
+  error       String?
+
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@unique([topic, payloadHash])
+  @@index([status, receivedAt])
+}
+
+model SyncAttempt {
+  id              String   @id @default(cuid())
+  shipmentSyncId  String
+  provider        String
+  requestSummary  Json
+  responseStatus  Int?
+  responseSummary Json?
+  errorCode       String?
+  errorMessage    String?
+  correlationId   String?
+  createdAt       DateTime @default(now())
+
+  shipmentSync ShipmentSync @relation(fields: [shipmentSyncId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentSyncId, createdAt])
+}

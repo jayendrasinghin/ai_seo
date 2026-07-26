@@ -9,6 +9,7 @@ import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { ModernPageHeader } from "../ModernPageHeader";
+import { SeoHomeButton } from "../HomeButton";
 import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
@@ -132,6 +133,7 @@ export default function IndexNowPage() {
 
   return (
     <s-page heading="IndexNow">
+      <SeoHomeButton />
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>

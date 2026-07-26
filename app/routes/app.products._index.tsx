@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { SeoHomeButton } from "../HomeButton";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { authenticate } from "../shopify.server";
@@ -255,6 +256,7 @@ export default function ProductsListPage() {
   return (
     <div>
       <s-page heading="Products">
+      <SeoHomeButton />
         <div className="seoi-page-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">Product SEO workspace</span>

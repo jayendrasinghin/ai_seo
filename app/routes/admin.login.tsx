@@ -5,6 +5,7 @@ import {
   isRouteErrorResponse,
   redirect,
   useActionData,
+  useLoaderData,
   useRouteError,
 } from "react-router";
 import {
@@ -16,6 +17,7 @@ import {
   createAdminSession,
   verifyAdminOtp,
 } from "../admin-auth.server";
+import { mailConfigured } from "../mail.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!adminPanelEnabled()) throw new Response("Not found", { status: 404 });
@@ -28,7 +30,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     token = null;
   }
   if (token) throw redirect("/admin");
-  return { otpEnabled: adminOtpEnabled() };
+  return {
+    otpEnabled: adminOtpEnabled(),
+    emailReady: mailConfigured(),
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -187,6 +192,7 @@ const styles = `
 `;
 
 export default function AdminLoginPage() {
+  const { otpEnabled, emailReady } = useLoaderData<typeof loader>();
   const data = useActionData<
     | { step: "password"; error?: string }
     | { step: "otp"; error?: string; emailMasked?: string; delivery?: string }
@@ -198,6 +204,8 @@ export default function AdminLoginPage() {
   const error = data && "error" in data ? data.error : undefined;
   const emailMasked =
     data && "emailMasked" in data ? data.emailMasked : undefined;
+  const delivery = data && "delivery" in data ? data.delivery : undefined;
+  const viaConsole = delivery === "console";
 
   return (
     <>
@@ -205,10 +213,12 @@ export default function AdminLoginPage() {
       <div className="login-shell">
         <div className="login-card">
           <p className="brand">SEOI Support</p>
-          <h1>{step === "otp" ? "Enter email code" : "Admin login"}</h1>
+          <h1>{step === "otp" ? "Enter login code" : "Admin login"}</h1>
           <p className="sub">
             {step === "otp"
-              ? `We sent a 6-digit code to ${emailMasked ?? "your email"}.`
+              ? viaConsole
+                ? `Password OK. OTP is printed in the app server terminal (email not configured yet). Enter the 6-digit code for ${emailMasked ?? "your account"}.`
+                : `We emailed a 6-digit code to ${emailMasked ?? "your email"}.`
               : "Sign in with email and password to open the support tickets dashboard."}
           </p>
 
@@ -230,7 +240,11 @@ export default function AdminLoginPage() {
                 Verify & continue
               </button>
               {error ? <p className="error">{error}</p> : null}
-              <p className="hint">Code expires in 10 minutes.</p>
+              <p className="hint">
+                {viaConsole
+                  ? "Look for [mail:console] in the terminal running npm run dev. Code expires in 10 minutes."
+                  : "Check inbox (and spam). Code expires in 10 minutes."}
+              </p>
             </Form>
           ) : null}
 
@@ -269,7 +283,11 @@ export default function AdminLoginPage() {
               </button>
               {error ? <p className="error">{error}</p> : null}
               <p className="hint">
-                After password check, a one-time code is emailed when OTP is enabled.
+                {otpEnabled
+                  ? emailReady
+                    ? "After password check, a one-time code is sent to your admin email."
+                    : "OTP is on. Add RESEND_API_KEY + MAIL_FROM in .env to receive codes by email; until then the code appears in the server terminal."
+                  : "OTP is disabled (ADMIN_OTP_ENABLED=false). Password-only login."}
               </p>
             </Form>
           ) : null}

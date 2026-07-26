@@ -10,6 +10,7 @@ import type {
 } from "react-router";
 import { getDefaultSupportAppId } from "../admin-auth.server";
 import { authenticate } from "../shopify.server";
+import { SeoHomeButton } from "../HomeButton";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 
@@ -192,7 +193,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SupportPage() {
-  const { recent, clientStale, defaultContactEmail, defaultWhatsapp } =
+  const { recent, clientStale, defaultContactEmail, defaultWhatsapp, shop } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
@@ -201,212 +202,220 @@ export default function SupportPage() {
     fetcher.data?.status === "error" ? fetcher.data.message : null;
 
   return (
-    <div>
-      <s-page heading="Help &amp; support">
-        <div className="seoi-page-hero">
+    <div className="seoi-support-page">
+      <SeoHomeButton />
+      <h1 className="seoi-support-title">Help &amp; support</h1>
+
+        <div className="seoi-page-hero seoi-support-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">Merchant support</span>
-            <h2>Get help without leaving Shopify.</h2>
+            <h2>We’re here when you need us.</h2>
             <p>
-              Send a question, report an issue, or request guidance. Replies stay
-              attached to your store so your support history remains easy to find.
+              Ask a question, report an issue, or request guidance — replies stay
+              with this store so your history is always easy to find.
             </p>
           </div>
-          <span className="seoi-status">Support available</span>
+          <div className="seoi-support-hero__aside">
+            <span className="seoi-status">Online</span>
+            <span className="seoi-support-hero__shop">{shop}</span>
+          </div>
         </div>
 
-        <s-section>
-          <s-text tone="neutral">
-            Send us a question or describe an issue. Your store domain is saved
-            automatically so we can match the request to your shop. When we
-            reply, it appears under your message below.
-          </s-text>
-        </s-section>
-
         {clientStale ? (
-          <s-section heading="Setup required">
-            <s-text tone="critical">
-              The support database client is missing on this server. On the
-              machine that runs the app, run{" "}
-              <code style={{ whiteSpace: "nowrap" }}>npx prisma generate</code>
-              , apply migrations with{" "}
-              <code style={{ whiteSpace: "nowrap" }}>
-                npx prisma migrate deploy
-              </code>
-              , then restart the process. After redeploy, reload this page.
-            </s-text>
-          </s-section>
+          <section className="seoi-section-card">
+            <div className="seoi-callout seoi-callout--danger">
+              Support cannot save messages until the database client is updated.
+              Run <code>npx prisma generate</code> and{" "}
+              <code>npx prisma migrate deploy</code>, then restart.
+            </div>
+          </section>
         ) : null}
 
-        <s-section heading="Send a message">
-          <fetcher.Form method="post" className="seoi-support-form">
-            <s-stack direction="block" gap="base">
-              <label style={{ display: "block" }}>
-                <s-text font-weight="bold">Your email (optional)</s-text>
-                <s-text tone="neutral">
-                  We can reply to this address. Pre-filled from your shop or
-                  account when available — edit or clear as you like. Leave blank
-                  if you prefer we use your Shopify account contact only.
-                </s-text>
+        <div className="seoi-support-layout">
+          <section className="seoi-support-compose">
+            <header className="seoi-support-compose__head">
+              <h3>Send a message</h3>
+              <p>Your store is attached automatically to every request.</p>
+            </header>
+
+            <fetcher.Form method="post" className="seoi-support-form">
+              <div className="seoi-support-row">
+                <div className="seoi-support-field">
+                  <label htmlFor="support-email">Email</label>
+                  <input
+                    id="support-email"
+                    name="contactEmail"
+                    type="email"
+                    autoComplete="email"
+                    defaultValue={defaultContactEmail}
+                    placeholder="you@example.com"
+                    disabled={clientStale}
+                  />
+                </div>
+                <div className="seoi-support-field">
+                  <label htmlFor="support-whatsapp">WhatsApp</label>
+                  <input
+                    id="support-whatsapp"
+                    name="whatsapp"
+                    type="tel"
+                    autoComplete="tel"
+                    defaultValue={defaultWhatsapp}
+                    placeholder="+91…"
+                    maxLength={32}
+                    disabled={clientStale}
+                  />
+                </div>
+              </div>
+
+              <div className="seoi-support-field">
+                <label htmlFor="support-subject">Subject</label>
                 <input
-                  name="contactEmail"
-                  type="email"
-                  autoComplete="email"
-                  defaultValue={defaultContactEmail}
-                  placeholder="you@example.com"
-                  disabled={clientStale}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    maxWidth: "28rem",
-                    marginTop: "0.35rem",
-                    padding: "0.5rem",
-                  }}
-                />
-              </label>
-              <label style={{ display: "block" }}>
-                <s-text font-weight="bold">WhatsApp (optional)</s-text>
-                <s-text tone="neutral">
-                  Include country code, e.g. +1 555 123 4567. Pre-filled from
-                  your shop billing phone when Shopify provides it.
-                </s-text>
-                <input
-                  name="whatsapp"
-                  type="tel"
-                  autoComplete="tel"
-                  defaultValue={defaultWhatsapp}
-                  placeholder="+1…"
-                  maxLength={32}
-                  disabled={clientStale}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    maxWidth: "28rem",
-                    marginTop: "0.35rem",
-                    padding: "0.5rem",
-                  }}
-                />
-              </label>
-              <label style={{ display: "block" }}>
-                <s-text font-weight="bold">Subject (optional)</s-text>
-                <input
+                  id="support-subject"
                   name="subject"
                   type="text"
                   maxLength={MAX_SUBJECT}
-                  placeholder="e.g. Billing question, feature request"
+                  placeholder="Billing, feature request, bug report…"
                   disabled={clientStale}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    maxWidth: "28rem",
-                    marginTop: "0.35rem",
-                    padding: "0.5rem",
-                  }}
                 />
-              </label>
-              <label style={{ display: "block" }}>
-                <s-text font-weight="bold">Message</s-text>
+              </div>
+
+              <div className="seoi-support-field">
+                <label htmlFor="support-message">Message</label>
                 <textarea
+                  id="support-message"
                   name="message"
                   required
-                  rows={6}
+                  rows={7}
                   minLength={10}
                   maxLength={MAX_MESSAGE}
-                  placeholder="Describe your question or what you need help with…"
+                  placeholder="Tell us what happened and what you need…"
                   disabled={clientStale}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    maxWidth: "36rem",
-                    marginTop: "0.35rem",
-                    padding: "0.5rem",
-                  }}
                 />
-              </label>
-              <div>
-                <s-button
+              </div>
+
+              <div className="seoi-support-form__footer">
+                <button
                   type="submit"
-                  variant="primary"
-                  {...(busy ? { loading: true } : {})}
+                  className="seoi-primary-action"
                   disabled={busy || clientStale}
                 >
-                  Send message
-                </s-button>
+                  {busy ? "Sending…" : "Send message"}
+                </button>
+                {ok ? (
+                  <p className="seoi-support-success">
+                    Message sent — we’ll reply here soon.
+                  </p>
+                ) : null}
+                {err ? <p className="seoi-support-error">{err}</p> : null}
               </div>
-              {ok ? (
-                <s-text tone="success">
-                  Thanks — we received your message and will get back to you as
-                  soon as we can.
-                </s-text>
-              ) : null}
-              {err ? <s-text tone="critical">{err}</s-text> : null}
-            </s-stack>
-          </fetcher.Form>
-        </s-section>
+            </fetcher.Form>
+          </section>
 
-        {recent.length > 0 ? (
-          <s-section heading="Your recent messages (this store)">
+          <aside className="seoi-support-guide">
+            <h3>Tips for a faster reply</h3>
+            <p>
+              A few details help us diagnose SEO, billing, or sync issues
+              quickly.
+            </p>
+            <ul>
+              <li>
+                <strong>Context</strong>
+                <span>What you tried and what went wrong</span>
+              </li>
+              <li>
+                <strong>IDs</strong>
+                <span>Order, product, or scan references if relevant</span>
+              </li>
+              <li>
+                <strong>Contact</strong>
+                <span>Best email or WhatsApp for follow-up</span>
+              </li>
+              <li>
+                <strong>Store</strong>
+                <span>Domain is saved automatically</span>
+              </li>
+            </ul>
+          </aside>
+        </div>
+
+        <section className="seoi-support-history">
+          <header className="seoi-support-history__head">
+            <div>
+              <h3>Conversation history</h3>
+              <p>Messages and replies for this store.</p>
+            </div>
+            {recent.length > 0 ? (
+              <span className="seoi-status">{recent.length} thread{recent.length === 1 ? "" : "s"}</span>
+            ) : null}
+          </header>
+
+          {recent.length > 0 ? (
             <div className="seoi-conversation-list">
               {recent.map((row) => (
-                <div
+                <article
                   key={row.id}
-                  className="seoi-conversation-card"
+                  className={`seoi-thread${row.reply ? " seoi-thread--replied" : ""}`}
                 >
-                  <s-text tone="neutral">
-                    {new Date(row.createdAt).toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </s-text>
-                  {row.subject ? (
-                    <div style={{ marginTop: "0.25rem" }}>
-                      <s-text font-weight="bold">{row.subject}</s-text>
+                  <div className="seoi-thread__head">
+                    <div className="seoi-thread__title">
+                      <h4>{row.subject?.trim() || "Support request"}</h4>
+                      <time dateTime={new Date(row.createdAt).toISOString()}>
+                        {new Date(row.createdAt).toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </time>
                     </div>
-                  ) : null}
-                  <div style={{ marginTop: "0.35rem", whiteSpace: "pre-wrap" }}>
-                    <s-text>{row.message}</s-text>
-                  </div>
-                  {row.contactEmail ? (
-                    <s-text tone="neutral">
-                      Email: {row.contactEmail}
-                    </s-text>
-                  ) : null}
-                  {row.whatsapp ? (
-                    <s-text tone="neutral">WhatsApp: {row.whatsapp}</s-text>
-                  ) : null}
-                  {row.reply ? (
-                    <div
-                      className="seoi-support-reply"
+                    <span
+                      className={`seoi-thread__badge${row.reply ? " seoi-thread__badge--done" : " seoi-thread__badge--open"}`}
                     >
-                      <s-text font-weight="bold">Reply from support</s-text>
-                      {row.replyAt ? (
-                        <s-text tone="neutral">
-                          {new Date(row.replyAt).toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </s-text>
-                      ) : null}
-                      <div
-                        style={{
-                          marginTop: "0.35rem",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        <s-text>{row.reply}</s-text>
+                      {row.reply ? "Replied" : "Open"}
+                    </span>
+                  </div>
+
+                  <div className="seoi-thread__bubble seoi-thread__bubble--you">
+                    <span className="seoi-thread__who">You</span>
+                    <p>{row.message}</p>
+                    {(row.contactEmail || row.whatsapp) && (
+                      <div className="seoi-thread__chips">
+                        {row.contactEmail ? (
+                          <span>{row.contactEmail}</span>
+                        ) : null}
+                        {row.whatsapp ? <span>{row.whatsapp}</span> : null}
                       </div>
+                    )}
+                  </div>
+
+                  {row.reply ? (
+                    <div className="seoi-thread__bubble seoi-thread__bubble--support">
+                      <div className="seoi-thread__who-row">
+                        <span className="seoi-thread__who">Support</span>
+                        {row.replyAt ? (
+                          <time dateTime={new Date(row.replyAt).toISOString()}>
+                            {new Date(row.replyAt).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </time>
+                        ) : null}
+                      </div>
+                      <p>{row.reply}</p>
                     </div>
                   ) : (
-                    <s-text tone="neutral">
-                      No reply yet — we’ll post it here when we respond.
-                    </s-text>
+                    <p className="seoi-thread__waiting">
+                      Waiting for a reply — we’ll post it here.
+                    </p>
                   )}
-                </div>
+                </article>
               ))}
             </div>
-          </s-section>
-        ) : null}
-      </s-page>
+          ) : (
+            <div className="seoi-empty-state seoi-support-empty">
+              <strong>No conversations yet</strong>
+              <span>Send your first message above and it will appear here.</span>
+            </div>
+          )}
+        </section>
     </div>
   );
 }

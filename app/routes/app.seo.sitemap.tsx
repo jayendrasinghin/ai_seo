@@ -9,6 +9,7 @@ import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { ModernPageHeader } from "../ModernPageHeader";
+import { SeoHomeButton } from "../HomeButton";
 import {
   getOrCreateSeoSettings,
   storefrontProxyUrl,
@@ -76,6 +77,7 @@ export default function SitemapSettingsPage() {
 
   return (
     <s-page heading="Sitemap & llms.txt">
+      <SeoHomeButton />
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>

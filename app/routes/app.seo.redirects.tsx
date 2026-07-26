@@ -9,6 +9,7 @@ import { authenticate } from "../shopify.server";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { ModernPageHeader } from "../ModernPageHeader";
+import { SeoHomeButton } from "../HomeButton";
 import {
   createUrlRedirect,
   deleteUrlRedirect,
@@ -85,6 +86,7 @@ export default function RedirectsPage() {
 
   return (
     <s-page heading="URL Redirects">
+      <SeoHomeButton />
       <s-link slot="breadcrumb-actions" href={withEmbeddedSearch("/app/seo", search)}>
         SEO Suite
       </s-link>

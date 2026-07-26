@@ -1,0 +1,388 @@
+/* Support page — high specificity so Shopify Polaris late CSS cannot wipe the UI */
+
+.seoi-app-shell .seoi-support-page {
+  --support-ink: #0f172a;
+  --support-muted: #64748b;
+  --support-line: #e2e8f0;
+  --support-soft: #f8fafc;
+  --support-accent: #4f46e5;
+  --support-accent-soft: #eef2ff;
+  display: block;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 4px 0 32px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-title {
+  margin: 0 0 4px;
+  color: var(--support-ink);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 12px 0 18px !important;
+  padding: 26px !important;
+  border: 1px solid #dfe3ff !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at 90% 20%, rgba(99, 102, 241, 0.16), transparent 16rem),
+    linear-gradient(135deg, #ffffff 0%, #f6f7ff 100%) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 30px rgba(15, 23, 42, 0.06) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-hero__aside {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-hero__shop {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--support-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.85fr) !important;
+  gap: 16px !important;
+  margin: 16px 0 !important;
+  align-items: start;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-compose,
+.seoi-app-shell .seoi-support-page .seoi-support-guide,
+.seoi-app-shell .seoi-support-page .seoi-support-history {
+  border: 1px solid var(--support-line) !important;
+  border-radius: 20px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-compose {
+  padding: 24px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-compose__head {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--support-line);
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-compose__head h3,
+.seoi-app-shell .seoi-support-page .seoi-support-guide h3,
+.seoi-app-shell .seoi-support-page .seoi-support-history__head h3 {
+  margin: 0 !important;
+  color: var(--support-ink) !important;
+  font-size: 18px !important;
+  letter-spacing: -0.025em;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-compose__head p,
+.seoi-app-shell .seoi-support-page .seoi-support-guide > p,
+.seoi-app-shell .seoi-support-page .seoi-support-history__head p {
+  margin: 6px 0 0 !important;
+  color: var(--support-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.5;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-form {
+  display: grid !important;
+  gap: 14px !important;
+  max-width: none !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-row {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-field label {
+  display: block !important;
+  margin: 0 0 6px !important;
+  color: var(--support-ink) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-field input,
+.seoi-app-shell .seoi-support-page .seoi-support-field textarea {
+  display: block !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  padding: 11px 13px !important;
+  border: 1px solid #dbe0ea !important;
+  border-radius: 12px !important;
+  background: var(--support-soft) !important;
+  color: var(--support-ink) !important;
+  font: inherit !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  box-shadow: none !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-field textarea {
+  min-height: 150px !important;
+  resize: vertical !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-field input:focus,
+.seoi-app-shell .seoi-support-page .seoi-support-field textarea:focus {
+  outline: none !important;
+  border-color: #a5b4fc !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-form__footer {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-success {
+  margin: 0 !important;
+  color: #047857 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-error {
+  margin: 0 !important;
+  color: #b91c1c !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-guide {
+  padding: 22px !important;
+  background: linear-gradient(165deg, #eef2ff 0%, #ffffff 48%) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-guide ul {
+  display: grid !important;
+  gap: 12px !important;
+  margin: 18px 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-guide li {
+  display: grid !important;
+  gap: 2px !important;
+  padding: 12px 14px !important;
+  border: 1px solid #e0e7ff !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-guide li strong {
+  color: var(--support-accent) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-guide li span {
+  color: var(--support-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.45;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-history {
+  margin: 0 0 8px !important;
+  padding: 22px 24px 24px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-history__head {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-conversation-list {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread {
+  padding: 18px !important;
+  border: 1px solid var(--support-line) !important;
+  border-radius: 18px !important;
+  background: var(--support-soft) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread--replied {
+  border-color: #c7d2fe !important;
+  background: #fff !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__head {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__title h4 {
+  margin: 0 !important;
+  color: var(--support-ink) !important;
+  font-size: 15px !important;
+  letter-spacing: -0.02em;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__title time {
+  display: block;
+  margin-top: 4px;
+  color: var(--support-muted) !important;
+  font-size: 12px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__badge {
+  flex-shrink: 0;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__badge--open {
+  color: #c2410c !important;
+  background: #fff7ed !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__badge--done {
+  color: #047857 !important;
+  background: #ecfdf5 !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble {
+  padding: 14px 15px !important;
+  border-radius: 16px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble + .seoi-thread__bubble,
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble + .seoi-thread__waiting {
+  margin-top: 10px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble--you {
+  border: 1px solid var(--support-line) !important;
+  background: #fff !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble--support {
+  border: 1px solid #c7d2fe !important;
+  background: var(--support-accent-soft) !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__who {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: var(--support-accent) !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__who-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__who-row time {
+  color: #6366f1 !important;
+  font-size: 11px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__bubble p {
+  margin: 0 !important;
+  color: var(--support-ink) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  white-space: pre-wrap;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__chips span {
+  padding: 4px 9px !important;
+  border-radius: 999px !important;
+  color: var(--support-muted) !important;
+  background: var(--support-soft) !important;
+  border: 1px solid var(--support-line) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-thread__waiting {
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  border: 1px dashed #cbd5e1 !important;
+  border-radius: 14px !important;
+  color: var(--support-muted) !important;
+  font-size: 12px !important;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-support-empty {
+  margin-top: 4px;
+}
+
+.seoi-app-shell .seoi-support-page .seoi-callout--danger {
+  color: #991b1b !important;
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+}
+
+@media (max-width: 900px) {
+  .seoi-app-shell .seoi-support-page .seoi-support-layout,
+  .seoi-app-shell .seoi-support-page .seoi-support-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .seoi-app-shell .seoi-support-page .seoi-support-hero {
+    flex-direction: column !important;
+  }
+
+  .seoi-app-shell .seoi-support-page .seoi-support-hero__aside {
+    align-items: flex-start;
+  }
+}

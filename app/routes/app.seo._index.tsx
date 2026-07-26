@@ -6,6 +6,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { SeoHomeButton } from "../HomeButton";
 import { getOrCreateSeoSettings } from "../seo-settings.server";
 import { getEffectivePlan, planHasSeoSuite } from "../plan-helpers";
 import prisma from "../db.server";
@@ -50,6 +51,7 @@ export default function SeoHubPage() {
 
   return (
     <s-page heading="SEO Suite">
+      <SeoHomeButton />
       <div className="seoi-page-hero">
         <div className="seoi-page-hero__content">
           <span className="seoi-eyebrow">Technical SEO toolkit</span>

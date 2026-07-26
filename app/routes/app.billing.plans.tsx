@@ -5,6 +5,8 @@ import type {
 import { useLoaderData, useLocation } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { SeoHomeButton } from "../HomeButton";
+import { EmbeddedNavLink } from "../embedded-nav-link";
 import prisma from "../db.server";
 import {
   billingChargesAreTest,
@@ -13,13 +15,17 @@ import {
 } from "../billing.server";
 import {
   AI_IMAGE_MONTHLY_INCLUDED,
-  AI_IMAGE_PLAN_LABEL,
+  AI_IMAGE_PLAN_LABEL_SHORT,
+  AI_IMAGE_PLAN_USD_PER_MONTH,
+  AI_IMAGE_PLAN_USD_PER_YEAR,
   FREE_AI_SEO_MONTHLY,
   FREE_PLAN_NAME,
   LAUNCH_STORE_TARGET,
   PLAN_FEATURES,
   PRO_PLAN_NAME,
-  SEO_PLAN_LABEL,
+  SEO_PLAN_LABEL_SHORT,
+  SEO_PLAN_USD_PER_MONTH,
+  SEO_PLAN_USD_PER_YEAR,
   STARTER_PLAN_NAME,
 } from "../pricing";
 import {
@@ -27,7 +33,6 @@ import {
   planImageAllowed,
   planSeoUnlimited,
 } from "../plan-helpers";
-import { withEmbeddedSearch } from "../embedded-nav";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -59,37 +64,65 @@ function currentPlanLabel(
   effectivePlan: string,
 ): string {
   if (effectivePlan === "free" || shopifyPlan === "free") {
-    return `${FREE_PLAN_NAME} — ${FREE_AI_SEO_MONTHLY} AI SEO optimizations/month`;
+    return `${FREE_PLAN_NAME}`;
   }
   if (effectivePlan === "seo" || shopifyPlan === "seo") {
-    return `${STARTER_PLAN_NAME} (${SEO_PLAN_LABEL}) — unlimited AI SEO`;
+    return `${STARTER_PLAN_NAME}`;
   }
   if (shopifyPlan === "seo_image") {
-    return `${PRO_PLAN_NAME} (${AI_IMAGE_PLAN_LABEL}) — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+    return `${PRO_PLAN_NAME}`;
   }
   if (shopifyPlan === "image") {
-    return `Legacy AI Image (${AI_IMAGE_PLAN_LABEL}) — ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+    return `Legacy AI Image`;
   }
-  return `${PRO_PLAN_NAME} — unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} images/mo`;
+  return `${PRO_PLAN_NAME}`;
+}
+
+function currentPlanDetail(
+  shopifyPlan: string,
+  effectivePlan: string,
+): string {
+  if (effectivePlan === "free" || shopifyPlan === "free") {
+    return `${FREE_AI_SEO_MONTHLY} AI SEO optimizations / month`;
+  }
+  if (effectivePlan === "seo" || shopifyPlan === "seo") {
+    return "Unlimited AI SEO";
+  }
+  if (shopifyPlan === "seo_image" || shopifyPlan === "image") {
+    return `Unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} AI images / month`;
+  }
+  return `Unlimited SEO + ${AI_IMAGE_MONTHLY_INCLUDED} AI images / month`;
 }
 
 export default function BillingPlansPage() {
   const {
     plan,
     effectivePlan,
+    aiSeoUsed,
+    aiImageUsed,
+    freeQuotaLimit,
     billingTestMode,
     partnerDevelopment,
   } = useLoaderData<typeof loader>();
   const { search } = useLocation();
   const params = new URLSearchParams(search.replaceAll("&amp;", "&"));
-  const returned = params.get("billing") === "return" || params.get("pricing") === "return";
+  const returned =
+    params.get("billing") === "return" || params.get("pricing") === "return";
 
   const hasSeo = planSeoUnlimited(effectivePlan);
   const hasImage = planImageAllowed(effectivePlan);
+  const isFree = effectivePlan === "free" || plan === "free";
+  const isStarter = effectivePlan === "seo" || plan === "seo";
+  const isPro =
+    plan === "seo_image" ||
+    plan === "image" ||
+    (!isFree && !isStarter && hasImage);
 
   return (
     <div>
       <s-page heading="Plans and billing">
+        <SeoHomeButton />
+
         <div className="seoi-page-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">Simple, transparent pricing</span>
@@ -102,69 +135,122 @@ export default function BillingPlansPage() {
           <span className="seoi-status">Managed by Shopify</span>
         </div>
 
-        {billingTestMode ? (
-          <s-section>
-            <s-text tone="neutral">
-              Test billing mode: charges are simulated (no real payment). Production uses live
-              billing when NODE_ENV is production and SHOPIFY_BILLING_TEST is not true.
-            </s-text>
-          </s-section>
-        ) : null}
-        {partnerDevelopment ? (
-          <s-section>
-            <s-text tone="info">
-              Partner development store detected. This app bypasses paid-plan checks here for
-              testing, so subscription checkout is not required.
-            </s-text>
-          </s-section>
-        ) : null}
-
-        {returned ? (
-          <s-section>
-            <s-text tone="success">
-              You returned from Shopify managed pricing. Your plan below should update within a few
-              seconds. If it still looks wrong, refresh this page.
-            </s-text>
-          </s-section>
-        ) : null}
-
-        <s-section heading="Current plan">
-          <s-stack direction="block" gap="small-200">
-            <s-text>
-              <strong>Plan:</strong> {currentPlanLabel(plan, effectivePlan)}
-            </s-text>
-            {hasSeo ? (
-              <s-text tone="neutral">AI SEO: unlimited (within fair use).</s-text>
+        {(billingTestMode || partnerDevelopment || returned) && (
+          <div className="seoi-billing-notices">
+            {billingTestMode ? (
+              <div className="seoi-callout">
+                Test billing mode — charges are simulated (no real payment).
+              </div>
             ) : null}
-            {hasImage ? (
-              <s-text tone="neutral">
-                AI product images: up to {AI_IMAGE_MONTHLY_INCLUDED} per billing month.
-              </s-text>
+            {partnerDevelopment ? (
+              <div className="seoi-callout">
+                Partner development store — paid-plan checks are bypassed for
+                testing.
+              </div>
             ) : null}
-          </s-stack>
-        </s-section>
+            {returned ? (
+              <div className="seoi-callout seoi-callout--success">
+                You returned from Shopify managed pricing. Your plan should
+                update shortly — refresh if it still looks wrong.
+              </div>
+            ) : null}
+          </div>
+        )}
 
-        <s-section heading="Available plans">
+        <section className="seoi-section-card seoi-billing-current">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Your current plan</h3>
+              <p>Active entitlements for this store.</p>
+            </div>
+            <span className="seoi-status">Active</span>
+          </div>
+
+          <div className="seoi-billing-current__grid">
+            <div className="seoi-billing-stat">
+              <span className="seoi-billing-stat__label">Plan</span>
+              <strong className="seoi-billing-stat__value">
+                {currentPlanLabel(plan, effectivePlan)}
+              </strong>
+              <span className="seoi-billing-stat__meta">
+                {currentPlanDetail(plan, effectivePlan)}
+              </span>
+            </div>
+            <div className="seoi-billing-stat">
+              <span className="seoi-billing-stat__label">AI SEO</span>
+              <strong className="seoi-billing-stat__value">
+                {hasSeo ? "Unlimited" : `${aiSeoUsed} / ${freeQuotaLimit}`}
+              </strong>
+              <span className="seoi-billing-stat__meta">
+                {hasSeo ? "Within fair use" : "Free monthly quota"}
+              </span>
+            </div>
+            <div className="seoi-billing-stat">
+              <span className="seoi-billing-stat__label">AI images</span>
+              <strong className="seoi-billing-stat__value">
+                {hasImage
+                  ? `${aiImageUsed} / ${AI_IMAGE_MONTHLY_INCLUDED}`
+                  : "Not included"}
+              </strong>
+              <span className="seoi-billing-stat__meta">
+                {hasImage ? "Per billing month" : "Upgrade to Pro"}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="seoi-section-card">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Available plans</h3>
+              <p>
+                Switch plans from your Shopify app listing — billing is managed
+                by Shopify.
+              </p>
+            </div>
+          </div>
+
           <div className="seoi-plan-grid">
-            <article className="seoi-plan-card">
-              <h3>Free — {FREE_PLAN_NAME}</h3>
-              <div className="seoi-plan-card__price">$0 · Free forever</div>
+            <article
+              className={`seoi-plan-card${isFree ? " seoi-plan-card--current" : ""}`}
+            >
+              {isFree ? (
+                <span className="seoi-plan-card__badge seoi-plan-card__badge--current">
+                  Current
+                </span>
+              ) : null}
+              <p className="seoi-plan-card__tier">Free</p>
+              <h3>{FREE_PLAN_NAME}</h3>
+              <div className="seoi-plan-card__price">
+                <span className="seoi-plan-card__amount">$0</span>
+                <span className="seoi-plan-card__period">forever</span>
+              </div>
               <ul>
                 {PLAN_FEATURES.free.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
             </article>
-            <article className="seoi-plan-card seoi-plan-card--featured">
-              <span className="seoi-plan-card__badge">Best value</span>
-              <h3>Starter — {STARTER_PLAN_NAME}</h3>
+
+            <article
+              className={`seoi-plan-card seoi-plan-card--featured${isStarter ? " seoi-plan-card--current" : ""}`}
+            >
+              <span className="seoi-plan-card__badge">
+                {isStarter ? "Current" : "Best value"}
+              </span>
+              <p className="seoi-plan-card__tier">Starter</p>
+              <h3>{STARTER_PLAN_NAME}</h3>
               <div className="seoi-plan-card__price">
-                {SEO_PLAN_LABEL} · 30-day trial
+                <span className="seoi-plan-card__amount">
+                  ${SEO_PLAN_USD_PER_MONTH}
+                </span>
+                <span className="seoi-plan-card__period">/mo</span>
               </div>
-              <p className="seoi-tool-card__meta">
-                Launch yearly pricing for the first {LAUNCH_STORE_TARGET} stores.
-                Existing subscriptions continue to match after regular pricing
-                is introduced.
+              <p className="seoi-plan-card__alt-price">
+                or ${SEO_PLAN_USD_PER_YEAR}/yr launch · {SEO_PLAN_LABEL_SHORT}
+              </p>
+              <p className="seoi-plan-card__note">
+                Launch yearly for the first {LAUNCH_STORE_TARGET} stores.
               </p>
               <ul>
                 {PLAN_FEATURES.starter.map((line) => (
@@ -172,11 +258,27 @@ export default function BillingPlansPage() {
                 ))}
               </ul>
             </article>
-            <article className="seoi-plan-card">
-              <h3>Pro — {PRO_PLAN_NAME}</h3>
+
+            <article
+              className={`seoi-plan-card${isPro ? " seoi-plan-card--current" : ""}`}
+            >
+              {isPro ? (
+                <span className="seoi-plan-card__badge seoi-plan-card__badge--current">
+                  Current
+                </span>
+              ) : null}
+              <p className="seoi-plan-card__tier">Pro</p>
+              <h3>{PRO_PLAN_NAME}</h3>
               <div className="seoi-plan-card__price">
-                {AI_IMAGE_PLAN_LABEL} · 30-day trial
+                <span className="seoi-plan-card__amount">
+                  ${AI_IMAGE_PLAN_USD_PER_MONTH}
+                </span>
+                <span className="seoi-plan-card__period">/mo</span>
               </div>
+              <p className="seoi-plan-card__alt-price">
+                or ${AI_IMAGE_PLAN_USD_PER_YEAR}/yr launch ·{" "}
+                {AI_IMAGE_PLAN_LABEL_SHORT}
+              </p>
               <ul>
                 {PLAN_FEATURES.pro.map((line) => (
                   <li key={line}>{line}</li>
@@ -184,30 +286,38 @@ export default function BillingPlansPage() {
               </ul>
             </article>
           </div>
-        </s-section>
+        </section>
 
-        <s-section heading="Managed pricing">
-          <s-text tone="neutral">
-            This app uses Shopify Managed Pricing. Plan approval, decline, and re-approval are
-            handled by Shopify during install and reinstall flows.
-          </s-text>
-          <div style={{ marginTop: "1rem" }}>
-            <s-stack direction="block" gap="base">
-              <s-text tone="neutral">
-                To switch plans, open your app listing in Shopify and choose a managed pricing plan
-                there.
-              </s-text>
-              <s-text tone="neutral">
-                If a merchant declined a charge previously, Shopify will request approval again when
-                they reinstall and select a paid plan.
-              </s-text>
-            </s-stack>
+        <section className="seoi-section-card seoi-billing-managed">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>How billing works</h3>
+              <p>Shopify Managed Pricing handles approval and charges.</p>
+            </div>
           </div>
-        </s-section>
-
-        <s-section>
-          <s-link href={withEmbeddedSearch("/app", search)}>Back to app home</s-link>
-        </s-section>
+          <ul className="seoi-billing-steps">
+            <li>
+              Open this app’s listing in Shopify Admin to choose or change a
+              plan.
+            </li>
+            <li>
+              Plan approval, decline, and re-approval happen in Shopify’s
+              checkout flow.
+            </li>
+            <li>
+              If a charge was declined before, Shopify will ask again when you
+              reinstall and select a paid plan.
+            </li>
+          </ul>
+          <div className="seoi-billing-actions">
+            <EmbeddedNavLink
+              hrefPathname="/app/seo-optimize"
+              variant="secondary"
+            >
+              ← Back to SEO hub
+            </EmbeddedNavLink>
+          </div>
+        </section>
       </s-page>
     </div>
   );

@@ -1,3 +1,4 @@
+import "./load-env.server";
 import OpenAI from "openai";
 
 type AiCopyResult = {
@@ -6,17 +7,51 @@ type AiCopyResult = {
   seoDescription: string;
 };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 const OPENAI_PROMPT_ID =
   process.env.OPENAI_PROMPT_ID ||
   "pmpt_69cd0280d378819399ea2685dcf06b6b067c21d9c3b05936";
+
+/** Must be Allow-listed on the OpenAI project (Model usage). */
+export const TEXT_MODEL =
+  process.env.OPENAI_CHAT_MODEL?.trim() || "gpt-5.4-mini";
+export const IMAGE_MODEL =
+  process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1-mini";
+
+/** Lazy client so `.env` is loaded before the key is read (same key as text + CLI test). */
+function getOpenAI(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is missing.");
+  }
+  return new OpenAI({ apiKey });
+}
+
+function formatOpenAiError(error: unknown): Error {
+  if (!error || typeof error !== "object") {
+    return new Error(String(error));
+  }
+  const err = error as {
+    status?: number;
+    code?: string;
+    type?: string;
+    message?: string;
+    request_id?: string;
+  };
+  const parts = [
+    err.status != null ? `status=${err.status}` : null,
+    err.code ? `code=${err.code}` : null,
+    err.type ? `type=${err.type}` : null,
+    err.request_id ? `request_id=${err.request_id}` : null,
+    err.message || "OpenAI request failed",
+  ].filter(Boolean);
+  return new Error(parts.join(" | "));
+}
 
 export async function generateProductCopy(input: {
   title: string;
   currentDescription?: string | null;
 }): Promise<AiCopyResult> {
+  const openai = getOpenAI();
   const baseTitle = input.title || "Your product";
   const plainDescription =
     input.currentDescription && input.currentDescription !== "null"
@@ -33,6 +68,11 @@ The JSON must have this exact shape:
   "seoTitle": "string",
   "seoDescription": "string"
 }
+Rules for seoDescription:
+- 120–155 characters
+- Specific to THIS product (use the title and real details)
+- Natural, benefit-focused; no generic filler like "discover features, benefits" or "optimized for search"
+- No keyword stuffing
 `;
 
   const userPrompt = `
@@ -40,23 +80,16 @@ Product title: "${baseTitle}"
 
 Current description (may be empty, HTML allowed):
 ${plainDescription || "(no current description provided)"}
+
+Write a unique product description, seoTitle, and seoDescription for this product only.
 `;
 
   let raw: Partial<AiCopyResult> = {};
   try {
-    const response = await openai.responses.create({
-      prompt: { id: OPENAI_PROMPT_ID, version: "1" },
-      input: `${systemPrompt}\n\n${userPrompt}`,
-      text: { format: { type: "json_object" } },
-    });
-
-    if (response.output_text) {
-      raw = JSON.parse(response.output_text) as Partial<AiCopyResult>;
-    }
-  } catch {
-    // Fallback path while prompt deployments/versions propagate.
+    // Prefer chat with an allow-listed project model. Saved prompts often pin
+    // blocked models and surface as confusing 429 quota errors.
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: TEXT_MODEL,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -66,11 +99,21 @@ ${plainDescription || "(no current description provided)"}
 
     const content = completion.choices[0]?.message?.content;
     if (content) {
-      try {
-        raw = JSON.parse(content) as Partial<AiCopyResult>;
-      } catch {
-        raw = {};
+      raw = JSON.parse(content) as Partial<AiCopyResult>;
+    }
+  } catch (chatError) {
+    try {
+      const response = await openai.responses.create({
+        prompt: { id: OPENAI_PROMPT_ID, version: "1" },
+        input: `${systemPrompt}\n\n${userPrompt}`,
+        text: { format: { type: "json_object" } },
+      });
+
+      if (response.output_text) {
+        raw = JSON.parse(response.output_text) as Partial<AiCopyResult>;
       }
+    } catch {
+      throw formatOpenAiError(chatError);
     }
   }
 
@@ -78,9 +121,16 @@ ${plainDescription || "(no current description provided)"}
     raw.descriptionHtml ||
     `<p>${baseTitle} is designed to help your customers get more value, every day.</p>`;
   const seoTitle = raw.seoTitle || `${baseTitle} | Online Store`;
-  const seoDescription =
-    raw.seoDescription ||
-    `${baseTitle} – discover features, benefits, and reasons customers love it. Optimized for search and written to increase clicks and conversions.`;
+  let seoDescription =
+    (raw.seoDescription || "").trim() ||
+    `Shop ${baseTitle}. Quality product with clear details to help you buy with confidence.`;
+  // Drop known generic filler if a prompt still returns it.
+  if (/discover features,\s*benefits|optimized for search/i.test(seoDescription)) {
+    seoDescription = `Shop ${baseTitle}. Quality product with clear details to help you buy with confidence.`;
+  }
+  if (seoDescription.length > 160) {
+    seoDescription = `${seoDescription.slice(0, 157).trim()}…`;
+  }
 
   return {
     descriptionHtml,
@@ -94,6 +144,7 @@ export async function generateProductImage(input: {
   background?: string | null;
   description?: string | null;
 }): Promise<{ imageUrl?: string; imageBase64?: string }> {
+  const openai = getOpenAI();
   const name = (input.title || "Product").trim().slice(0, 200);
   const background = (input.background || "clean white or neutral studio background")
     .trim()
@@ -102,27 +153,29 @@ export async function generateProductImage(input: {
   const extrasClause = extra
     ? ` Extra creative direction: ${extra}.`
     : "";
-  const prompt = `Professional ecommerce product photograph of ${name}. Background: ${background}. Soft commercial lighting, centered composition, sharp focus, high-end catalog style.${extrasClause} Do not invent unrelated products. Avoid unwanted watermarks unless the creative direction explicitly requests a brand logo or text.`;
+  // Keep prompts concise — same API shape as test-openai-image.mjs
+  const prompt =
+    `Professional ecommerce product photograph of ${name}. ` +
+    `Background: ${background}. Soft commercial lighting, centered composition, sharp focus.` +
+    extrasClause;
 
-  // dall-e-3 was removed from the OpenAI API (2026). Use GPT Image models.
-  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+  try {
+    const response = await openai.images.generate({
+      model: IMAGE_MODEL,
+      prompt,
+      size: "1024x1024",
+    });
 
-  const result = await openai.images.generate({
-    model,
-    prompt,
-    n: 1,
-    size: "1024x1024",
-    quality: "medium",
-  });
+    const imageBase64 = response.data?.[0]?.b64_json;
 
-  const imageUrl = result.data?.[0]?.url ?? undefined;
-  const imageBase64 = result.data?.[0]?.b64_json ?? undefined;
+    if (!imageBase64) {
+      throw new Error("No image data returned.");
+    }
 
-  if (!imageUrl && !imageBase64) {
-    throw new Error("No image returned from the image model.");
+    return { imageBase64 };
+  } catch (error) {
+    throw formatOpenAiError(error);
   }
-
-  return { imageUrl, imageBase64 };
 }
 
 /**
@@ -235,6 +288,7 @@ export async function generateImageAltText(input: {
   productTitle: string;
   currentAlt?: string | null;
 }): Promise<{ altText: string }> {
+  const openai = getOpenAI();
   const productTitle = (input.productTitle || "Product").trim().slice(0, 200);
   const currentAlt = (input.currentAlt || "").trim().slice(0, 300);
 
@@ -261,7 +315,7 @@ Write a NEW alt that is different from the current alt and specific to this prod
 `;
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: TEXT_MODEL,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },

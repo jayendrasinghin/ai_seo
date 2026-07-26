@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "3b46a7d5b955f46d2298724437e64a02"
-name = "Seoi AI SEO & Image Optimize"
+name = "Seoi — SEO & PaySync"
 application_url = "https://seoi.in/"
 embedded = true
 
@@ -33,7 +33,9 @@ api_version = "2026-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_content,read_inventory,read_locations,read_online_store_navigation,read_products,write_app_proxy,write_inventory,write_online_store_navigation,write_products"
+# PaySync needs order scopes. After Shopify approves "read all orders", include read_all_orders.
+# Reopen the app so the merchant re-approves OAuth scopes.
+scopes = "read_content,read_inventory,read_locations,read_online_store_navigation,read_products,write_app_proxy,write_inventory,write_online_store_navigation,write_products,read_orders,write_orders,read_all_orders,read_fulfillments"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

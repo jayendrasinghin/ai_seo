@@ -1,0 +1,18 @@
+# Redis for PaySync BullMQ workers. SEO app keeps using its existing Postgres.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: seoi-paysync-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - seoi_paysync_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  seoi_paysync_redis_data:
