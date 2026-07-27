@@ -4,7 +4,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher, useLoaderData, useLocation } from "react-router";
+import { useFetcher, useLoaderData, useLocation, useNavigate } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { SeoHomeButton } from "../HomeButton";
 import { productPathSegmentFromGid } from "../shopify-ids";
@@ -857,6 +857,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function ManagePage() {
   const loaderData = useLoaderData<typeof loader>();
   const location = useLocation();
+  const navigate = useNavigate();
   const fetcher = useFetcher<typeof action>();
   const manageSearchFetcher = useFetcher<typeof loader>();
 
@@ -916,7 +917,7 @@ export default function ManagePage() {
   }, [fetcher.data?.status]);
 
   const commitSearchToUrl = () => {
-    window.location.assign(managePathWithQ(location.search, inputValue));
+    navigate(managePathWithQ(location.search, inputValue));
   };
 
   const selectedProduct = useMemo(

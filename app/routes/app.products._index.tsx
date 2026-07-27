@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useLocation } from "react-router";
+import { useFetcher, useLoaderData, useLocation, useNavigate } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { SeoHomeButton } from "../HomeButton";
 import { withEmbeddedSearch } from "../embedded-nav";
@@ -195,6 +195,7 @@ function productListHref(
 export default function ProductsListPage() {
   const loaderData = useLoaderData<typeof loader>();
   const location = useLocation();
+  const navigate = useNavigate();
   const fetcher = useFetcher<typeof loader>();
 
   const [inputValue, setInputValue] = useState(loaderData.q);
@@ -241,7 +242,7 @@ export default function ProductsListPage() {
   const listProducts = searchingLive ? [] : display.products;
 
   const commitSearchToUrl = () => {
-    window.location.assign(productsListPathWithQ(location.search, inputValue));
+    navigate(productsListPathWithQ(location.search, inputValue));
   };
 
   const prevHref =
@@ -394,7 +395,7 @@ export default function ProductsListPage() {
                   variant="secondary"
                   disabled={!prevHref}
                   onClick={() => {
-                    if (prevHref) window.location.assign(prevHref);
+                    if (prevHref) navigate(prevHref);
                   }}
                 >
                   Previous
@@ -404,7 +405,7 @@ export default function ProductsListPage() {
                   variant="secondary"
                   disabled={!nextHref}
                   onClick={() => {
-                    if (nextHref) window.location.assign(nextHref);
+                    if (nextHref) navigate(nextHref);
                   }}
                 >
                   Next
