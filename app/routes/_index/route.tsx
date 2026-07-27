@@ -2,15 +2,29 @@ import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
+import { readLastShop } from "../../last-shop.server";
 
 import styles from "./styles.module.css";
 
 function shopFromHost(host: string | null): string | null {
   if (!host) return null;
   try {
-    const decoded = atob(host);
-    // admin.shopify.com/store/{store} or similar
+    const decoded = atob(host.replace(/-/g, "+").replace(/_/g, "/"));
     const match = decoded.match(/\/store\/([^/?#]+)/);
+    if (!match?.[1]) return null;
+    const handle = match[1];
+    return handle.includes(".") ? handle : `${handle}.myshopify.com`;
+  } catch {
+    return null;
+  }
+}
+
+function shopFromReferrer(referrer: string | null): string | null {
+  if (!referrer) return null;
+  try {
+    const ref = new URL(referrer);
+    if (!ref.hostname.endsWith("shopify.com")) return null;
+    const match = ref.pathname.match(/\/store\/([^/?#]+)/);
     if (!match?.[1]) return null;
     const handle = match[1];
     return handle.includes(".") ? handle : `${handle}.myshopify.com`;
@@ -23,10 +37,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const shopParam = url.searchParams.get("shop");
   const host = url.searchParams.get("host");
-  const shop = shopParam || shopFromHost(host);
+  const shop =
+    shopParam ||
+    shopFromHost(host) ||
+    shopFromReferrer(request.headers.get("referer")) ||
+    (await readLastShop(request));
 
-  // Embedded Admin / OAuth always includes shop or host — never show the public login page.
-  if (shop || host || url.searchParams.get("id_token") || url.searchParams.get("embedded") === "1") {
+  // Once a shop is known (URL, Admin referrer, or previous login cookie),
+  // never ask for the domain again — go straight into the app.
+  if (
+    shop ||
+    host ||
+    url.searchParams.get("id_token") ||
+    url.searchParams.get("embedded") === "1"
+  ) {
     if (shop && !url.searchParams.get("shop")) {
       url.searchParams.set("shop", shop);
     }
@@ -75,8 +99,8 @@ export default function App() {
             Shopify fulfillments.
           </li>
           <li>
-            <strong>Tip</strong> — open the app from Shopify Admin → Apps → Seoi
-            (not this public URL alone).
+            <strong>Tip</strong> — open from Shopify Admin → Apps → Seoi. After
+            the first login, this page should not ask for your store again.
           </li>
         </ul>
       </div>

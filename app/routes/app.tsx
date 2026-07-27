@@ -4,14 +4,19 @@ import { withEmbeddedSearch } from "../embedded-nav";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { useSeoiCssLock } from "../seoi-css-lock";
+import { lastShopSetCookieHeader } from "../last-shop.server";
 
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const setCookie = await lastShopSetCookieHeader(session.shop);
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return Response.json(
+    { apiKey: process.env.SHOPIFY_API_KEY || "" },
+    setCookie ? { headers: { "Set-Cookie": setCookie } } : undefined,
+  );
 };
 
 function isPaySyncPath(pathname: string) {
