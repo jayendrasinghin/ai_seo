@@ -37,31 +37,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const shopParam = url.searchParams.get("shop");
   const host = url.searchParams.get("host");
-  const shop =
+  const fromAdmin =
+    Boolean(host) ||
+    url.searchParams.get("id_token") != null ||
+    url.searchParams.get("embedded") === "1" ||
+    Boolean(shopFromReferrer(request.headers.get("referer")));
+
+  const shopFromShopify =
     shopParam ||
     shopFromHost(host) ||
-    shopFromReferrer(request.headers.get("referer")) ||
-    (await readLastShop(request));
+    shopFromReferrer(request.headers.get("referer"));
 
-  // Once a shop is known (URL, Admin referrer, or previous login cookie),
-  // never ask for the domain again — go straight into the app.
-  if (
-    shop ||
-    host ||
-    url.searchParams.get("id_token") ||
-    url.searchParams.get("embedded") === "1"
-  ) {
-    if (shop && !url.searchParams.get("shop")) {
-      url.searchParams.set("shop", shop);
+  // Only bounce into /app when Shopify Admin context is present.
+  // Never use the remember-shop cookie alone — /app outside Admin returns 410
+  // and can loop with /auth/login.
+  if (fromAdmin || shopFromShopify) {
+    if (shopFromShopify && !url.searchParams.get("shop")) {
+      url.searchParams.set("shop", shopFromShopify);
     }
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  return { showForm: Boolean(login) };
+  const lastShop = await readLastShop(request);
+
+  return {
+    showForm: Boolean(login),
+    lastShop: lastShop ?? "",
+  };
 };
 
 export default function App() {
-  const { showForm } = useLoaderData<typeof loader>();
+  const { showForm, lastShop } = useLoaderData<typeof loader>();
 
   return (
     <div className={styles.index}>
@@ -80,6 +86,7 @@ export default function App() {
                 type="text"
                 name="shop"
                 placeholder="your-store.myshopify.com"
+                defaultValue={lastShop}
                 autoComplete="on"
               />
               <span>e.g. storetest-987654354.myshopify.com</span>
@@ -99,8 +106,9 @@ export default function App() {
             Shopify fulfillments.
           </li>
           <li>
-            <strong>Tip</strong> — open from Shopify Admin → Apps → Seoi. After
-            the first login, this page should not ask for your store again.
+            <strong>Tip</strong> — open from Shopify Admin → Apps → Seoi for the
+            embedded app. Or enter your{" "}
+            <code>*.myshopify.com</code> domain below.
           </li>
         </ul>
       </div>
