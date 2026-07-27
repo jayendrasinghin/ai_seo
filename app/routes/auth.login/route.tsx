@@ -1,7 +1,7 @@
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useLoaderData } from "react-router";
+import { Form, redirect, useActionData, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { readLastShop } from "../../last-shop.server";
@@ -9,16 +9,14 @@ import { loginErrorMessage } from "./error.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  // If Shopify (or a form) already provided ?shop=, login() starts OAuth.
-  // Do NOT redirect cookie → /app here: that causes a 410 / redirect loop
-  // outside the Admin iframe.
+
+  // If shop is missing but we remember the last store, continue OAuth instead of
+  // showing the domain form (that form appears after a bad full-page nav).
   if (!url.searchParams.get("shop")) {
     const lastShop = await readLastShop(request);
     if (lastShop) {
-      return {
-        errors: loginErrorMessage({}),
-        lastShop,
-      };
+      url.searchParams.set("shop", lastShop);
+      throw redirect(`/auth/login?${url.searchParams.toString()}`);
     }
   }
 

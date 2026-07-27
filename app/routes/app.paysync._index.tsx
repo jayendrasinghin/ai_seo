@@ -4,7 +4,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher, useLoaderData, useLocation } from "react-router";
+import { useFetcher, useLoaderData, useLocation, useNavigate } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -184,6 +184,7 @@ export default function OverviewPage() {
   const { stats, shopName, paypal } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
+  const navigate = useNavigate();
   const { search } = useLocation();
   const paypalOrders =
     stats.providerDist.find((row) => row.paymentProvider === "paypal")?._count ??
@@ -664,7 +665,7 @@ export default function OverviewPage() {
                   <button
                     key={item.title}
                     type="button"
-                    onClick={() => window.location.assign(item.href)}
+                    onClick={() => navigate(item.href)}
                     style={{
                       display: "flex",
                       gap: "10px",

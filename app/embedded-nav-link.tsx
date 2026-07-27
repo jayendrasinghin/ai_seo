@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { withEmbeddedSearch } from "./embedded-nav";
 
 export type EmbeddedNavLinkProps = {
@@ -86,8 +86,10 @@ const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSPro
 
 /**
  * In-app navigation for the Shopify embedded admin iframe.
- * App Bridge registers capture listeners on `<a href>` clicks; handlers on anchors often
- * never run. Use a `<button>` + `location.assign()` so navigation is not intercepted.
+ *
+ * Prefer React Router client navigation (keeps App Bridge session token).
+ * A full `location.assign()` reload without ?shop=/host= drops auth and shows
+ * the shop-domain Log in page.
  */
 export function EmbeddedNavLink({
   hrefPathname,
@@ -97,6 +99,7 @@ export function EmbeddedNavLink({
   className,
   variant = "link",
 }: EmbeddedNavLinkProps) {
+  const navigate = useNavigate();
   const { search: locationSearch } = useLocation();
   const search = searchProp ?? locationSearch;
   const fullHref = withEmbeddedSearch(hrefPathname, search);
@@ -111,7 +114,7 @@ export function EmbeddedNavLink({
     if (e.altKey || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    window.location.assign(fullHref);
+    navigate(fullHref);
   }
 
   return (
