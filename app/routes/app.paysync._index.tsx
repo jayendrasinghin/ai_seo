@@ -632,19 +632,33 @@ export default function OverviewPage() {
                     icon: "?",
                     title: "Payment accounts",
                     text: "Manage PayPal and Razorpay credentials.",
-                    href: withEmbeddedSearch("/app/paysync/paypal", search),
+                    href: withEmbeddedSearch("/app/paysync/paypal", search, {
+                      product: null,
+                    }),
                   },
                   {
                     icon: "↻",
                     title: "Sync queue",
                     text: "Inspect pending and failed shipments.",
-                    href: withEmbeddedSearch("/app/paysync/queue", search),
+                    href: withEmbeddedSearch("/app/paysync/queue", search, {
+                      product: null,
+                    }),
                   },
                   {
                     icon: "⚙",
                     title: "Feature settings",
                     text: "Configure order processing.",
-                    href: withEmbeddedSearch("/app/paysync/settings", search),
+                    href: withEmbeddedSearch("/app/paysync/settings", search, {
+                      product: null,
+                    }),
+                  },
+                  {
+                    icon: "✉",
+                    title: "Help & support",
+                    text: "Ask about PaySync — tickets open in the PaySync inbox.",
+                    href: withEmbeddedSearch("/app/support", search, {
+                      product: "paysync",
+                    }),
                   },
                 ].map((item) => (
                   <button
@@ -713,7 +727,7 @@ export default function OverviewPage() {
               </h2>
               <p
                 style={{
-                  margin: 0,
+                  margin: "0 0 12px",
                   color: "#5f6368",
                   fontSize: "12px",
                   lineHeight: 1.5,
@@ -721,6 +735,13 @@ export default function OverviewPage() {
               >
                 Your feedback helps shape a clearer, faster tracking workflow.
               </p>
+              <s-link
+                href={withEmbeddedSearch("/app/support", search, {
+                  product: "paysync",
+                })}
+              >
+                Contact PaySync support →
+              </s-link>
             </div>
           </aside>
         </div>

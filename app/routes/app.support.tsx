@@ -8,11 +8,20 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { getDefaultSupportAppId } from "../admin-auth.server";
+import {
+  getSupportAppIdForProduct,
+  normalizeSupportProduct,
+  type SupportProductKey,
+} from "../admin-auth.server";
 import { authenticate } from "../shopify.server";
-import { SeoHomeButton } from "../HomeButton";
+import { PaySyncHomeButton, SeoHomeButton } from "../HomeButton";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
+
+const PRODUCT_LABEL: Record<SupportProductKey, string> = {
+  seoi: "Seoi SEO",
+  paysync: "PaySync",
+};
 
 const MAX_MESSAGE = 5000;
 const MAX_SUBJECT = 200;
@@ -29,11 +38,25 @@ function supportMessageDelegate() {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
+  const url = new URL(request.url);
+  const product = normalizeSupportProduct(url.searchParams.get("product"));
+  const appId = await getSupportAppIdForProduct(product);
 
   const delegate = supportMessageDelegate();
   const recent = delegate
     ? await delegate.findMany({
-        where: { shop },
+        where: {
+          shop,
+          ...(appId
+            ? {
+                OR: [
+                  { appId },
+                  // Legacy SEO tickets created before product tagging
+                  ...(product === "seoi" ? [{ appId: null }] : []),
+                ],
+              }
+            : {}),
+        },
         orderBy: { createdAt: "desc" },
         take: 10,
         select: {
@@ -100,6 +123,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     shop,
+    product,
+    productLabel: PRODUCT_LABEL[product],
     recent,
     clientStale: !delegate,
     defaultContactEmail,
@@ -170,9 +195,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
+  const product = normalizeSupportProduct(String(formData.get("product") ?? ""));
   let appId: string | null = null;
   try {
-    appId = await getDefaultSupportAppId();
+    appId = await getSupportAppIdForProduct(product);
   } catch {
     appId = null;
   }
@@ -193,8 +219,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SupportPage() {
-  const { recent, clientStale, defaultContactEmail, defaultWhatsapp, shop } =
-    useLoaderData<typeof loader>();
+  const {
+    recent,
+    clientStale,
+    defaultContactEmail,
+    defaultWhatsapp,
+    shop,
+    product,
+    productLabel,
+  } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
   const ok = fetcher.data?.status === "ok";
@@ -203,12 +236,12 @@ export default function SupportPage() {
 
   return (
     <div className="seoi-support-page">
-      <SeoHomeButton />
+      {product === "paysync" ? <PaySyncHomeButton /> : <SeoHomeButton />}
       <h1 className="seoi-support-title">Help &amp; support</h1>
 
         <div className="seoi-page-hero seoi-support-hero">
           <div className="seoi-page-hero__content">
-            <span className="seoi-eyebrow">Merchant support</span>
+            <span className="seoi-eyebrow">{productLabel} support</span>
             <h2>We’re here when you need us.</h2>
             <p>
               Ask a question, report an issue, or request guidance — replies stay
@@ -239,6 +272,7 @@ export default function SupportPage() {
             </header>
 
             <fetcher.Form method="post" className="seoi-support-form">
+              <input type="hidden" name="product" value={product} />
               <div className="seoi-support-row">
                 <div className="seoi-support-field">
                   <label htmlFor="support-email">Email</label>
@@ -314,8 +348,9 @@ export default function SupportPage() {
           <aside className="seoi-support-guide">
             <h3>Tips for a faster reply</h3>
             <p>
-              A few details help us diagnose SEO, billing, or sync issues
-              quickly.
+              {product === "paysync"
+                ? "A few details help us diagnose PayPal, Razorpay, or sync issues quickly."
+                : "A few details help us diagnose SEO, billing, or image issues quickly."}
             </p>
             <ul>
               <li>
@@ -324,7 +359,11 @@ export default function SupportPage() {
               </li>
               <li>
                 <strong>IDs</strong>
-                <span>Order, product, or scan references if relevant</span>
+                <span>
+                  {product === "paysync"
+                    ? "Order name, PayPal transaction ID, or sync queue job if relevant"
+                    : "Product, scan, or billing references if relevant"}
+                </span>
               </li>
               <li>
                 <strong>Contact</strong>
@@ -342,7 +381,7 @@ export default function SupportPage() {
           <header className="seoi-support-history__head">
             <div>
               <h3>Conversation history</h3>
-              <p>Messages and replies for this store.</p>
+              <p>{productLabel} messages and replies for this store.</p>
             </div>
             {recent.length > 0 ? (
               <span className="seoi-status">{recent.length} thread{recent.length === 1 ? "" : "s"}</span>

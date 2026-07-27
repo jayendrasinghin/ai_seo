@@ -94,18 +94,40 @@ export async function ensureAdminSeedUser(): Promise<void> {
   });
 }
 
+/** Inbox product keys used by Help & support (?product=) and SupportApp.slug. */
+export const SUPPORT_PRODUCT_SLUGS = {
+  seoi: "seoi",
+  paysync: "pay-sync",
+} as const;
+
+export type SupportProductKey = keyof typeof SUPPORT_PRODUCT_SLUGS;
+
+export function normalizeSupportProduct(
+  raw: string | null | undefined,
+): SupportProductKey {
+  const v = (raw || "").trim().toLowerCase();
+  if (v === "paysync" || v === "pay-sync" || v === "paypal" || v === "pay") {
+    return "paysync";
+  }
+  return "seoi";
+}
+
+export function supportAppSlugForProduct(product: SupportProductKey): string {
+  return SUPPORT_PRODUCT_SLUGS[product];
+}
+
 export async function ensureSupportApps(): Promise<void> {
   const defaults = [
     {
-      slug: "seoi",
-      name: "Product Image SEO Optimizer",
-      description: "AI product SEO & image optimization (seoi.in)",
+      slug: SUPPORT_PRODUCT_SLUGS.seoi,
+      name: "Seoi SEO",
+      description: "AI SEO & image optimization (seoi.in)",
       sortOrder: 1,
     },
     {
-      slug: "pay-sync",
-      name: "Pay Sync",
-      description: "Payment sync support",
+      slug: SUPPORT_PRODUCT_SLUGS.paysync,
+      name: "PaySync",
+      description: "PayPal / Razorpay tracking sync",
       sortOrder: 2,
     },
   ];
@@ -123,13 +145,25 @@ export async function ensureSupportApps(): Promise<void> {
   }
 }
 
-export async function getDefaultSupportAppId(): Promise<string | null> {
+export async function getSupportAppIdBySlug(
+  slug: string,
+): Promise<string | null> {
   await ensureSupportApps();
   const app = await prisma.supportApp.findUnique({
-    where: { slug: "seoi" },
+    where: { slug },
     select: { id: true },
   });
   return app?.id ?? null;
+}
+
+export async function getSupportAppIdForProduct(
+  product: SupportProductKey,
+): Promise<string | null> {
+  return getSupportAppIdBySlug(supportAppSlugForProduct(product));
+}
+
+export async function getDefaultSupportAppId(): Promise<string | null> {
+  return getSupportAppIdForProduct("seoi");
 }
 
 export async function createAdminSession(adminUserId: string): Promise<{

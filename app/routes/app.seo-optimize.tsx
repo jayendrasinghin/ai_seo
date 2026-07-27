@@ -40,7 +40,7 @@ const SEO_TOOLS = [
   {
     title: "Help & support",
     description: "Contact support and track your messages.",
-    href: "/app/support",
+    href: "/app/support?product=seoi",
     cta: "Get Help",
   },
 ] as const;
