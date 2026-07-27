@@ -39,6 +39,7 @@ function formatAdminDateTime(value?: string | Date | null) {
 type LiveStoreProfile = {
   storeName: string | null;
   primaryDomain: string | null;
+  storefrontUrl: string | null;
   contactEmail: string | null;
   phone: string | null;
   address: string | null;
@@ -132,9 +133,15 @@ async function fetchLiveStoreProfile(
     const phone = (s.billingAddress?.phone || "").trim() || null;
     const contactEmail =
       (s.contactEmail || "").trim() || (s.email || "").trim() || null;
+    const host = (s.primaryDomain?.host || "").trim() || null;
+    const storefrontUrl =
+      (s.primaryDomain?.url || "").replace(/\/$/, "") ||
+      (host ? `https://${host}` : null) ||
+      `https://${shop}`;
     return {
       storeName: s.name ?? null,
-      primaryDomain: s.primaryDomain?.host || s.primaryDomain?.url || null,
+      primaryDomain: host || s.primaryDomain?.url || null,
+      storefrontUrl,
       contactEmail,
       phone,
       address: address || null,
@@ -255,6 +262,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     lastActivityAt: Date | null;
     storeName: string | null;
     primaryDomain: string | null;
+    storefrontUrl: string | null;
     contactEmail: string | null;
     phone: string | null;
     address: string | null;
@@ -322,6 +330,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       {
         storeName: string | null;
         primaryDomain: string | null;
+        storefrontUrl: string | null;
         contactEmail: string | null;
         phone: string | null;
         address: string | null;
@@ -335,7 +344,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const savedProfiles = await prisma.storeProfile.findMany({
         where: { shop: { in: installedShopRows.map((r) => r.shop) } },
       });
-      savedByShop = new Map(savedProfiles.map((p) => [p.shop, p]));
+      savedByShop = new Map(
+        savedProfiles.map((p) => [
+          p.shop,
+          {
+            storeName: p.storeName,
+            primaryDomain: p.primaryDomain,
+            storefrontUrl: p.storefrontUrl,
+            contactEmail: p.contactEmail,
+            phone: p.phone,
+            address: p.address,
+            country: p.country,
+            timezone: p.timezone,
+            currency: p.currency,
+            planDisplayName: p.planDisplayName,
+          },
+        ]),
+      );
     } catch (error) {
       console.error(
         "[admin] StoreProfile table missing? Run: npx prisma migrate deploy",
@@ -357,6 +382,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   shop: row.shop,
                   storeName: live.storeName,
                   primaryDomain: live.primaryDomain,
+                  storefrontUrl: live.storefrontUrl,
                   contactEmail: live.contactEmail,
                   phone: live.phone,
                   address: live.address,
@@ -369,6 +395,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 update: {
                   storeName: live.storeName,
                   primaryDomain: live.primaryDomain,
+                  storefrontUrl: live.storefrontUrl,
                   contactEmail: live.contactEmail,
                   phone: live.phone,
                   address: live.address,
@@ -403,6 +430,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           lastActivityAt: usage?.updatedAt ?? null,
           storeName: profile?.storeName ?? null,
           primaryDomain: profile?.primaryDomain ?? null,
+          storefrontUrl:
+            profile?.storefrontUrl ||
+            (profile?.primaryDomain
+              ? `https://${profile.primaryDomain}`
+              : `https://${row.shop}`),
           contactEmail: profile?.contactEmail ?? null,
           phone: profile?.phone ?? null,
           address: profile?.address ?? null,
@@ -968,6 +1000,21 @@ export default function AdminIndexPage() {
                       <div className="shop">{s.storeName || s.shop}</div>
                       <p className="meta" style={{ marginTop: 6 }}>
                         Domain: {s.primaryDomain || s.shop}
+                      </p>
+                      <p className="meta">
+                        Storefront:{" "}
+                        {s.storefrontUrl ? (
+                          <a
+                            href={s.storefrontUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "#0f766e" }}
+                          >
+                            {s.storefrontUrl}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
                       </p>
                       <p className="meta">
                         Shopify plan: {s.planDisplayName || s.plan}

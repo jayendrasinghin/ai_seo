@@ -52,6 +52,8 @@ model StoreProfile {
   shop             String   @unique
   storeName        String?
   primaryDomain    String?
+  /// Full public storefront URL (primaryDomain.url), e.g. https://example.com
+  storefrontUrl    String?
   contactEmail     String?
   phone            String?
   address          String?
