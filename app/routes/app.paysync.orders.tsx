@@ -8,7 +8,7 @@ import { useFetcher, useLoaderData, useLocation } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { withEmbeddedSearch } from "../embedded-nav";
+import { withEmbeddedSearch, withOrdersFilter } from "../embedded-nav";
 import { orderSyncRepository } from "../repositories";
 import {
   formatDateTime,
@@ -99,44 +99,22 @@ export default function OrdersPage() {
     <s-page heading="Orders">
       <s-section heading="Filters">
         <s-stack direction="inline" gap="base">
-          <s-link href={withEmbeddedSearch("/app/paysync/orders", search)}>
-            All
-          </s-link>
-          <s-link
-            href={withEmbeddedSearch(
-              "/app/paysync/orders?provider=paypal",
-              search,
-            )}
-          >
+          <s-link href={withOrdersFilter(search)}>All</s-link>
+          <s-link href={withOrdersFilter(search, { provider: "paypal" })}>
             PayPal
           </s-link>
-          <s-link
-            href={withEmbeddedSearch("/app/paysync/orders?provider=cod", search)}
-          >
+          <s-link href={withOrdersFilter(search, { provider: "cod" })}>
             COD / Cash
           </s-link>
-          <s-link
-            href={withEmbeddedSearch(
-              "/app/paysync/orders?provider=razorpay",
-              search,
-            )}
-          >
+          <s-link href={withOrdersFilter(search, { provider: "razorpay" })}>
             Razorpay
           </s-link>
           <s-link
-            href={withEmbeddedSearch(
-              "/app/paysync/orders?needsMappingOnly=true",
-              search,
-            )}
+            href={withOrdersFilter(search, { needsMappingOnly: "true" })}
           >
             Needs mapping
           </s-link>
-          <s-link
-            href={withEmbeddedSearch(
-              "/app/paysync/orders?failuresOnly=true",
-              search,
-            )}
-          >
+          <s-link href={withOrdersFilter(search, { failuresOnly: "true" })}>
             Failures only
           </s-link>
         </s-stack>

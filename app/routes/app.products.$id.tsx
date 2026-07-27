@@ -122,8 +122,9 @@ async function fetchProductImagesUntilChanged(
   previousCount: number,
   options?: { expectIncrease?: boolean; attempts?: number; delayMs?: number },
 ): Promise<ProductImageNode[]> {
-  const attempts = options?.attempts ?? 6;
-  const delayMs = options?.delayMs ?? 900;
+  // Keep short — OpenAI image gen already takes ~40s; long polls trip 502s.
+  const attempts = options?.attempts ?? 3;
+  const delayMs = options?.delayMs ?? 600;
   const expectIncrease = options?.expectIncrease ?? true;
   let images = await fetchProductImages(admin, productId);
 

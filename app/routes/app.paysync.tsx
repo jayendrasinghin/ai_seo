@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData } from "react-router";
+import { Navigate, Outlet, useLoaderData, useLocation } from "react-router";
 import { authenticate } from "../shopify.server";
 import { PaySyncHomeButton } from "../HomeButton";
-import { embeddedRedirect } from "../embedded-nav";
+import { withEmbeddedSearch } from "../embedded-nav";
 import {
   paypalConnectionRepository,
   settingsRepository,
@@ -15,8 +15,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const settings = await shopRepository.getOrCreateSettings(shop.id);
   const connection = await paypalConnectionRepository.findByShopId(shop.id);
 
-  const url = new URL(request.url);
-  const onOnboarding = url.pathname.startsWith("/app/paysync/onboarding");
   let onboardingDone = Boolean(settings.onboardingCompletedAt);
   const paypalConnected = Boolean(connection);
 
@@ -26,32 +24,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     onboardingDone = true;
   }
 
-  // New stores must connect PayPal via onboarding before using PaySync.
-  // Keep ?shop=&host= or Shopify shows the login screen.
-  if (!onboardingDone && !onOnboarding) {
-    throw embeddedRedirect("/app/paysync/onboarding", request);
-  }
-
-  // After setup, reconnecting happens on the PayPal page (avoid redirect loops).
-  if (
-    onboardingDone &&
-    !paypalConnected &&
-    !onOnboarding &&
-    !url.pathname.startsWith("/app/paysync/paypal")
-  ) {
-    throw embeddedRedirect("/app/paysync/paypal", request);
-  }
-
+  // Do not throw redirect() here — parent redirects during SPA/single-fetch
+  // cause "No result found for routeId routes/app.paysync._index".
+  // Navigate in the component instead so child loaders still resolve.
   return {
     onboardingDone,
     paypalConnected,
-    onOnboarding,
   };
 };
 
 export default function PaySyncLayout() {
-  const { onboardingDone, paypalConnected, onOnboarding } =
-    useLoaderData<typeof loader>();
+  const { onboardingDone, paypalConnected } = useLoaderData<typeof loader>();
+  const { pathname, search } = useLocation();
+  const onOnboarding = pathname.startsWith("/app/paysync/onboarding");
+  const onPaypal = pathname.startsWith("/app/paysync/paypal");
+
+  if (!onboardingDone && !onOnboarding) {
+    return (
+      <Navigate
+        to={withEmbeddedSearch("/app/paysync/onboarding", search)}
+        replace
+      />
+    );
+  }
+
+  if (onboardingDone && !paypalConnected && !onOnboarding && !onPaypal) {
+    return (
+      <Navigate
+        to={withEmbeddedSearch("/app/paysync/paypal", search)}
+        replace
+      />
+    );
+  }
 
   return (
     <>

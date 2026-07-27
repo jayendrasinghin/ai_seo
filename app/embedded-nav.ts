@@ -10,24 +10,55 @@ export function useEmbeddedSearch(): string {
   return useLocation().search;
 }
 
-export function withEmbeddedSearch(pathname: string, search: string): string {
+/**
+ * Build an in-app href that keeps Shopify embed params from `search`.
+ * Optional `replaceParams` overwrites/adds keys; keys set to `null` are removed
+ * (so filter tabs like All / PayPal don't stack old filters).
+ */
+export function withEmbeddedSearch(
+  pathname: string,
+  search: string,
+  replaceParams?: Record<string, string | null>,
+): string {
   // Defensive: some contexts pass HTML-entity-encoded query strings.
   const q = search.replaceAll("&amp;", "&");
-  if (!q) return pathname;
+  const [path, pathQuery = ""] = pathname.split("?");
+  const merged = new URLSearchParams(q.startsWith("?") ? q.slice(1) : q);
 
-  // Path already has its own query (e.g. /app/paysync/orders?failuresOnly=true)
-  if (pathname.includes("?")) {
-    const [path, pathQuery] = pathname.split("?");
-    const merged = new URLSearchParams(q.startsWith("?") ? q.slice(1) : q);
+  if (pathQuery) {
     const extra = new URLSearchParams(pathQuery);
     for (const [key, value] of extra.entries()) {
       merged.set(key, value);
     }
-    const out = merged.toString();
-    return out ? `${path}?${out}` : path;
   }
 
-  return `${pathname}${q.startsWith("?") ? q : `?${q}`}`;
+  if (replaceParams) {
+    for (const [key, value] of Object.entries(replaceParams)) {
+      if (value === null) merged.delete(key);
+      else merged.set(key, value);
+    }
+  }
+
+  // Drop unknown non-embed junk only when explicitly clearing filters via replaceParams
+  // (call sites pass nulls for filter keys). Keep everything else as-is.
+  const out = merged.toString();
+  return out ? `${path}?${out}` : path;
+}
+
+/** Orders filter links: keep embed params, reset other order filters, set one filter. */
+export function withOrdersFilter(
+  search: string,
+  filter: Record<string, string> = {},
+): string {
+  return withEmbeddedSearch("/app/paysync/orders", search, {
+    provider: null,
+    syncStatus: null,
+    failuresOnly: null,
+    needsMappingOnly: null,
+    ...Object.fromEntries(
+      Object.entries(filter).map(([k, v]) => [k, v] as const),
+    ),
+  });
 }
 
 /** Server redirect that keeps embedded ?shop=&host= session params. */
