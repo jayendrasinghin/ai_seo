@@ -168,17 +168,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
     };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
-    installedShops = installedShopRows.map((row) => {
-      const usage = usageByShop.get(row.shop);
-      return {
-        shop: row.shop,
-        plan: usage?.plan ?? "free",
-        aiSeoUsed: usage?.aiSeoUsed ?? 0,
-        aiImageUsed: usage?.aiImageUsed ?? 0,
-        firstSeenAt: usage?.createdAt ?? null,
-        lastActivityAt: usage?.updatedAt ?? null,
-      };
-    });
+    installedShops = installedShopRows
+      .map((row) => {
+        const usage = usageByShop.get(row.shop);
+        return {
+          shop: row.shop,
+          plan: usage?.plan ?? "free",
+          aiSeoUsed: usage?.aiSeoUsed ?? 0,
+          aiImageUsed: usage?.aiImageUsed ?? 0,
+          firstSeenAt: usage?.createdAt ?? null,
+          lastActivityAt: usage?.updatedAt ?? null,
+        };
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.lastActivityAt ?? a.firstSeenAt ?? 0).getTime();
+        const bTime = new Date(b.lastActivityAt ?? b.firstSeenAt ?? 0).getTime();
+        if (bTime !== aTime) return bTime - aTime;
+        return a.shop.localeCompare(b.shop);
+      });
   }
 
   return {
