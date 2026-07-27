@@ -21,6 +21,19 @@ import { LAUNCH_STORE_TARGET } from "../pricing";
 
 const MAX_REPLY = 5000;
 
+function formatAdminDateTime(value?: string | Date | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     await requireAdminSession(request);
@@ -722,9 +735,8 @@ export default function AdminIndexPage() {
                       </p>
                       <p className="meta">
                         First seen:{" "}
-                        {s.firstSeenAt ? new Date(s.firstSeenAt).toLocaleString() : "-"} · Last
-                        activity:{" "}
-                        {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleString() : "-"}
+                        {formatAdminDateTime(s.firstSeenAt)} · Last activity:{" "}
+                        {formatAdminDateTime(s.lastActivityAt)}
                       </p>
                     </div>
                   ))}
