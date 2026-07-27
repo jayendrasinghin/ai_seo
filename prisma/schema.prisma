@@ -46,6 +46,24 @@ model StoreUsage {
   updatedAt     DateTime @updatedAt
 }
 
+/// Cached Shopify shop profile (synced from Admin GraphQL for support admin).
+model StoreProfile {
+  id               String   @id @default(cuid())
+  shop             String   @unique
+  storeName        String?
+  primaryDomain    String?
+  contactEmail     String?
+  phone            String?
+  address          String?
+  country          String?
+  timezone         String?
+  currency         String?
+  planDisplayName  String?
+  syncedAt         DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
 /// Merchant low-stock email alerts (qty below threshold).
 model InventoryAlertSettings {
   id            String   @id @default(cuid())

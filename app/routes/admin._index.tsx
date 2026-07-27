@@ -291,18 +291,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
     };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
+    const savedProfiles = await prisma.storeProfile.findMany({
+      where: { shop: { in: installedShopRows.map((r) => r.shop) } },
+    });
+    const savedByShop = new Map(savedProfiles.map((p) => [p.shop, p]));
+
     const liveProfiles = new Map(
       await Promise.all(
-        installedShopRows.map(async (row) => [
-          row.shop,
-          await fetchLiveStoreProfile(row.shop, row.accessToken),
-        ]),
+        installedShopRows.map(async (row) => {
+          const live = await fetchLiveStoreProfile(row.shop, row.accessToken);
+          if (live) {
+            await prisma.storeProfile.upsert({
+              where: { shop: row.shop },
+              create: {
+                shop: row.shop,
+                storeName: live.storeName,
+                primaryDomain: live.primaryDomain,
+                contactEmail: live.contactEmail,
+                phone: live.phone,
+                address: live.address,
+                country: live.country,
+                timezone: live.timezone,
+                currency: live.currency,
+                planDisplayName: live.planDisplayName,
+                syncedAt: new Date(),
+              },
+              update: {
+                storeName: live.storeName,
+                primaryDomain: live.primaryDomain,
+                contactEmail: live.contactEmail,
+                phone: live.phone,
+                address: live.address,
+                country: live.country,
+                timezone: live.timezone,
+                currency: live.currency,
+                planDisplayName: live.planDisplayName,
+                syncedAt: new Date(),
+              },
+            });
+          }
+          return [row.shop, live] as const;
+        }),
       ),
     );
+
     installedShops = installedShopRows
       .map((row) => {
         const usage = usageByShop.get(row.shop);
-        const profile = liveProfiles.get(row.shop);
+        const live = liveProfiles.get(row.shop);
+        const saved = savedByShop.get(row.shop);
+        const profile = live ?? saved ?? null;
         return {
           shop: row.shop,
           plan: usage?.plan ?? "free",
