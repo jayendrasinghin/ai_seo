@@ -18,6 +18,7 @@ import {
 } from "../admin-auth.server";
 import prisma from "../db.server";
 import { LAUNCH_STORE_TARGET } from "../pricing";
+import { apiVersion } from "../shopify.server";
 
 const MAX_REPLY = 5000;
 
@@ -32,6 +33,107 @@ function formatAdminDateTime(value?: string | Date | null) {
     second: "2-digit",
     hour12: false,
   }).format(new Date(value));
+}
+
+type LiveStoreProfile = {
+  storeName: string | null;
+  primaryDomain: string | null;
+  contactEmail: string | null;
+  phone: string | null;
+  address: string | null;
+  country: string | null;
+  timezone: string | null;
+  currency: string | null;
+  planDisplayName: string | null;
+};
+
+async function fetchLiveStoreProfile(
+  shop: string,
+  accessToken: string,
+): Promise<LiveStoreProfile | null> {
+  try {
+    const response = await fetch(`https://${shop}/admin/api/${apiVersion}/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({
+        query: `#graphql
+          query AdminInstalledStoreProfile {
+            shop {
+              name
+              contactEmail
+              ianaTimezone
+              currencyCode
+              primaryDomain {
+                host
+                url
+              }
+              billingAddress {
+                address1
+                address2
+                city
+                province
+                country
+                zip
+                phone
+              }
+              plan {
+                displayName
+              }
+            }
+          }`,
+      }),
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      data?: {
+        shop?: {
+          name?: string | null;
+          contactEmail?: string | null;
+          ianaTimezone?: string | null;
+          currencyCode?: string | null;
+          primaryDomain?: { host?: string | null; url?: string | null } | null;
+          billingAddress?: {
+            address1?: string | null;
+            address2?: string | null;
+            city?: string | null;
+            province?: string | null;
+            country?: string | null;
+            zip?: string | null;
+            phone?: string | null;
+          } | null;
+          plan?: { displayName?: string | null } | null;
+        };
+      };
+      errors?: Array<{ message?: string }>;
+    };
+    const s = json.data?.shop;
+    if (!s) return null;
+    const address = [
+      s.billingAddress?.address1,
+      s.billingAddress?.address2,
+      s.billingAddress?.city,
+      s.billingAddress?.province,
+      s.billingAddress?.zip,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      storeName: s.name ?? null,
+      primaryDomain: s.primaryDomain?.host || s.primaryDomain?.url || null,
+      contactEmail: s.contactEmail ?? null,
+      phone: s.billingAddress?.phone ?? null,
+      address: address || null,
+      country: s.billingAddress?.country ?? null,
+      timezone: s.ianaTimezone ?? null,
+      currency: s.currencyCode ?? null,
+      planDisplayName: s.plan?.displayName ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -138,6 +240,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     aiImageUsed: number;
     firstSeenAt: Date | null;
     lastActivityAt: Date | null;
+    storeName: string | null;
+    primaryDomain: string | null;
+    contactEmail: string | null;
+    phone: string | null;
+    address: string | null;
+    country: string | null;
+    timezone: string | null;
+    currency: string | null;
+    planDisplayName: string | null;
   }> = [];
 
   let launchStats = {
@@ -147,11 +258,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   if (section === "shops") {
-    const installedShopRows = await prisma.session.findMany({
-      distinct: ["shop"],
-      select: { shop: true },
-      orderBy: { shop: "asc" },
+    const sessionRows = await prisma.session.findMany({
+      select: {
+        shop: true,
+        accessToken: true,
+        isOnline: true,
+        accountOwner: true,
+      },
+      orderBy: [{ shop: "asc" }, { isOnline: "desc" }, { accountOwner: "desc" }],
     });
+    const sessionsByShop = new Map<
+      string,
+      { shop: string; accessToken: string; isOnline: boolean; accountOwner: boolean }
+    >();
+    for (const row of sessionRows) {
+      if (!sessionsByShop.has(row.shop)) sessionsByShop.set(row.shop, row);
+    }
+    const installedShopRows = [...sessionsByShop.values()];
     const usageRows = await prisma.storeUsage.findMany({
       select: {
         shop: true,
@@ -168,9 +291,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
     };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
+    const liveProfiles = new Map(
+      await Promise.all(
+        installedShopRows.map(async (row) => [
+          row.shop,
+          await fetchLiveStoreProfile(row.shop, row.accessToken),
+        ]),
+      ),
+    );
     installedShops = installedShopRows
       .map((row) => {
         const usage = usageByShop.get(row.shop);
+        const profile = liveProfiles.get(row.shop);
         return {
           shop: row.shop,
           plan: usage?.plan ?? "free",
@@ -178,6 +310,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           aiImageUsed: usage?.aiImageUsed ?? 0,
           firstSeenAt: usage?.createdAt ?? null,
           lastActivityAt: usage?.updatedAt ?? null,
+          storeName: profile?.storeName ?? null,
+          primaryDomain: profile?.primaryDomain ?? null,
+          contactEmail: profile?.contactEmail ?? null,
+          phone: profile?.phone ?? null,
+          address: profile?.address ?? null,
+          country: profile?.country ?? null,
+          timezone: profile?.timezone ?? null,
+          currency: profile?.currency ?? null,
+          planDisplayName: profile?.planDisplayName ?? null,
         };
       })
       .sort((a, b) => {
@@ -733,13 +874,31 @@ export default function AdminIndexPage() {
                 <div className="card-grid">
                   {installedShops.map((s) => (
                     <div key={s.shop} className="card">
-                      <div className="shop">{s.shop}</div>
+                      <div className="shop">{s.storeName || s.shop}</div>
                       <p className="meta" style={{ marginTop: 6 }}>
-                        Shopify plan: {s.plan}
+                        Domain: {s.primaryDomain || s.shop}
+                      </p>
+                      <p className="meta">
+                        Shopify plan: {s.planDisplayName || s.plan}
                       </p>
                       <p className="meta">
                         AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}
                       </p>
+                      {(s.contactEmail || s.phone) && (
+                        <p className="meta">
+                          {s.contactEmail ? `Email: ${s.contactEmail}` : ""}
+                          {s.contactEmail && s.phone ? " · " : ""}
+                          {s.phone ? `Phone: ${s.phone}` : ""}
+                        </p>
+                      )}
+                      {(s.country || s.timezone || s.currency) && (
+                        <p className="meta">
+                          {s.country || "-"}
+                          {s.timezone ? ` · ${s.timezone}` : ""}
+                          {s.currency ? ` · ${s.currency}` : ""}
+                        </p>
+                      )}
+                      {s.address && <p className="meta">Address: {s.address}</p>}
                       <p className="meta">
                         First seen:{" "}
                         {formatAdminDateTime(s.firstSeenAt)} · Last activity:{" "}
