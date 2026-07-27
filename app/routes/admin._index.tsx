@@ -18,6 +18,7 @@ import {
 } from "../admin-auth.server";
 import prisma from "../db.server";
 import { LAUNCH_STORE_TARGET } from "../pricing";
+import { ensureFreshOfflineAccessToken } from "../shop-access.server";
 import { apiVersion } from "../shopify.server";
 
 const MAX_REPLY = 5000;
@@ -63,6 +64,7 @@ async function fetchLiveStoreProfile(
           query AdminInstalledStoreProfile {
             shop {
               name
+              email
               contactEmail
               ianaTimezone
               currencyCode
@@ -86,11 +88,15 @@ async function fetchLiveStoreProfile(
           }`,
       }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error("[admin] shop profile HTTP", shop, response.status);
+      return null;
+    }
     const json = (await response.json()) as {
       data?: {
         shop?: {
           name?: string | null;
+          email?: string | null;
           contactEmail?: string | null;
           ianaTimezone?: string | null;
           currencyCode?: string | null;
@@ -109,6 +115,9 @@ async function fetchLiveStoreProfile(
       };
       errors?: Array<{ message?: string }>;
     };
+    if (json.errors?.length) {
+      console.error("[admin] shop profile GraphQL", shop, json.errors);
+    }
     const s = json.data?.shop;
     if (!s) return null;
     const address = [
@@ -120,18 +129,22 @@ async function fetchLiveStoreProfile(
     ]
       .filter(Boolean)
       .join(", ");
+    const phone = (s.billingAddress?.phone || "").trim() || null;
+    const contactEmail =
+      (s.contactEmail || "").trim() || (s.email || "").trim() || null;
     return {
       storeName: s.name ?? null,
       primaryDomain: s.primaryDomain?.host || s.primaryDomain?.url || null,
-      contactEmail: s.contactEmail ?? null,
-      phone: s.billingAddress?.phone ?? null,
+      contactEmail,
+      phone,
       address: address || null,
       country: s.billingAddress?.country ?? null,
       timezone: s.ianaTimezone ?? null,
       currency: s.currencyCode ?? null,
       planDisplayName: s.plan?.displayName ?? null,
     };
-  } catch {
+  } catch (error) {
+    console.error("[admin] shop profile error", shop, error);
     return null;
   }
 }
@@ -260,8 +273,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (section === "shops") {
     const sessionRows = await prisma.session.findMany({
       select: {
+        id: true,
         shop: true,
         accessToken: true,
+        refreshToken: true,
+        expires: true,
+        refreshTokenExpires: true,
         isOnline: true,
         accountOwner: true,
       },
@@ -269,7 +286,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
     const sessionsByShop = new Map<
       string,
-      { shop: string; accessToken: string; isOnline: boolean; accountOwner: boolean }
+      {
+        id: string;
+        shop: string;
+        accessToken: string;
+        refreshToken: string | null;
+        expires: Date | null;
+        refreshTokenExpires: Date | null;
+        isOnline: boolean;
+        accountOwner: boolean;
+      }
     >();
     for (const row of sessionRows) {
       if (!sessionsByShop.has(row.shop)) sessionsByShop.set(row.shop, row);
@@ -291,44 +317,71 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
     };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
-    const savedProfiles = await prisma.storeProfile.findMany({
-      where: { shop: { in: installedShopRows.map((r) => r.shop) } },
-    });
-    const savedByShop = new Map(savedProfiles.map((p) => [p.shop, p]));
+    let savedByShop = new Map<
+      string,
+      {
+        storeName: string | null;
+        primaryDomain: string | null;
+        contactEmail: string | null;
+        phone: string | null;
+        address: string | null;
+        country: string | null;
+        timezone: string | null;
+        currency: string | null;
+        planDisplayName: string | null;
+      }
+    >();
+    try {
+      const savedProfiles = await prisma.storeProfile.findMany({
+        where: { shop: { in: installedShopRows.map((r) => r.shop) } },
+      });
+      savedByShop = new Map(savedProfiles.map((p) => [p.shop, p]));
+    } catch (error) {
+      console.error(
+        "[admin] StoreProfile table missing? Run: npx prisma migrate deploy",
+        error,
+      );
+    }
 
     const liveProfiles = new Map(
       await Promise.all(
         installedShopRows.map(async (row) => {
-          const live = await fetchLiveStoreProfile(row.shop, row.accessToken);
+          const token = await ensureFreshOfflineAccessToken(row);
+          if (!token) return [row.shop, null] as const;
+          const live = await fetchLiveStoreProfile(row.shop, token);
           if (live) {
-            await prisma.storeProfile.upsert({
-              where: { shop: row.shop },
-              create: {
-                shop: row.shop,
-                storeName: live.storeName,
-                primaryDomain: live.primaryDomain,
-                contactEmail: live.contactEmail,
-                phone: live.phone,
-                address: live.address,
-                country: live.country,
-                timezone: live.timezone,
-                currency: live.currency,
-                planDisplayName: live.planDisplayName,
-                syncedAt: new Date(),
-              },
-              update: {
-                storeName: live.storeName,
-                primaryDomain: live.primaryDomain,
-                contactEmail: live.contactEmail,
-                phone: live.phone,
-                address: live.address,
-                country: live.country,
-                timezone: live.timezone,
-                currency: live.currency,
-                planDisplayName: live.planDisplayName,
-                syncedAt: new Date(),
-              },
-            });
+            try {
+              await prisma.storeProfile.upsert({
+                where: { shop: row.shop },
+                create: {
+                  shop: row.shop,
+                  storeName: live.storeName,
+                  primaryDomain: live.primaryDomain,
+                  contactEmail: live.contactEmail,
+                  phone: live.phone,
+                  address: live.address,
+                  country: live.country,
+                  timezone: live.timezone,
+                  currency: live.currency,
+                  planDisplayName: live.planDisplayName,
+                  syncedAt: new Date(),
+                },
+                update: {
+                  storeName: live.storeName,
+                  primaryDomain: live.primaryDomain,
+                  contactEmail: live.contactEmail,
+                  phone: live.phone,
+                  address: live.address,
+                  country: live.country,
+                  timezone: live.timezone,
+                  currency: live.currency,
+                  planDisplayName: live.planDisplayName,
+                  syncedAt: new Date(),
+                },
+              });
+            } catch (error) {
+              console.error("[admin] StoreProfile upsert failed", row.shop, error);
+            }
           }
           return [row.shop, live] as const;
         }),
@@ -922,21 +975,17 @@ export default function AdminIndexPage() {
                       <p className="meta">
                         AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}
                       </p>
-                      {(s.contactEmail || s.phone) && (
-                        <p className="meta">
-                          {s.contactEmail ? `Email: ${s.contactEmail}` : ""}
-                          {s.contactEmail && s.phone ? " · " : ""}
-                          {s.phone ? `Phone: ${s.phone}` : ""}
-                        </p>
-                      )}
-                      {(s.country || s.timezone || s.currency) && (
-                        <p className="meta">
-                          {s.country || "-"}
-                          {s.timezone ? ` · ${s.timezone}` : ""}
-                          {s.currency ? ` · ${s.currency}` : ""}
-                        </p>
-                      )}
-                      {s.address && <p className="meta">Address: {s.address}</p>}
+                      <p className="meta">
+                        Email: {s.contactEmail || "—"}
+                        {" · "}
+                        Phone: {s.phone || "—"}
+                      </p>
+                      <p className="meta">
+                        {s.country || "—"}
+                        {s.timezone ? ` · ${s.timezone}` : ""}
+                        {s.currency ? ` · ${s.currency}` : ""}
+                      </p>
+                      {s.address ? <p className="meta">Address: {s.address}</p> : null}
                       <p className="meta">
                         First seen:{" "}
                         {formatAdminDateTime(s.firstSeenAt)} · Last activity:{" "}
