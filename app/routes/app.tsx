@@ -7,10 +7,16 @@ import { useSeoiCssLock } from "../seoi-css-lock";
 import { lastShopSetCookieHeader } from "../last-shop.server";
 
 import { authenticate } from "../shopify.server";
+import { maybeSyncStoreProfileForShop } from "../store-profile.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const setCookie = await lastShopSetCookieHeader(session.shop);
+
+  // Capture merchant email / store profile on app open (throttled to once/day).
+  void maybeSyncStoreProfileForShop(session.shop).catch((error) => {
+    console.error("[app] store profile sync failed", session.shop, error);
+  });
 
   // eslint-disable-next-line no-undef
   return Response.json(

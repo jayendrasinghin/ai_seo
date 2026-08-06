@@ -36,6 +36,24 @@ const shopify = shopifyApp({
           "PaySync webhook registration failed — configure Protected Customer Data in Partner Dashboard, then reinstall",
         );
       }
+
+      // Force-save store email/profile right after install or re-auth.
+      // Dynamic import avoids circular dependency with store-profile.server.
+      try {
+        const { syncStoreProfileFromAuthSession } = await import(
+          "./store-profile.server"
+        );
+        await syncStoreProfileFromAuthSession(session);
+        logger.info({ shop: session.shop }, "Store profile synced after auth");
+      } catch (error) {
+        logger.warn(
+          {
+            shop: session.shop,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Store profile sync after auth failed",
+        );
+      }
     },
   },
   future: {

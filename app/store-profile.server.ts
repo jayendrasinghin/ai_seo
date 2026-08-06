@@ -214,6 +214,73 @@ export async function syncStoreProfile(
   return result.profile;
 }
 
+const DEFAULT_PROFILE_SYNC_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Sync StoreProfile for a shop using its offline Session.
+ * Skips if last sync is fresher than maxAgeMs (unless force=true).
+ */
+export async function maybeSyncStoreProfileForShop(
+  shop: string,
+  options: { force?: boolean; maxAgeMs?: number } = {},
+): Promise<StoreProfileData | null> {
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_PROFILE_SYNC_MAX_AGE_MS;
+  if (!options.force) {
+    try {
+      const existing = await prisma.storeProfile.findUnique({
+        where: { shop },
+        select: { syncedAt: true, contactEmail: true },
+      });
+      if (
+        existing?.syncedAt &&
+        existing.contactEmail &&
+        Date.now() - existing.syncedAt.getTime() < maxAgeMs
+      ) {
+        return null;
+      }
+    } catch {
+      // Table may not exist yet on older deploys — ignore and try sync.
+    }
+  }
+
+  const offline = await prisma.session.findFirst({
+    where: { shop, isOnline: false },
+    select: {
+      id: true,
+      shop: true,
+      accessToken: true,
+      refreshToken: true,
+      expires: true,
+      refreshTokenExpires: true,
+    },
+    orderBy: { id: "asc" },
+  });
+  if (!offline?.accessToken) return null;
+  return syncStoreProfile(offline);
+}
+
+/** Sync immediately from the OAuth/afterAuth session (no throttle). */
+export async function syncStoreProfileFromAuthSession(session: {
+  id: string;
+  shop: string;
+  accessToken?: string;
+  refreshToken?: string | null;
+  expires?: Date | null;
+  refreshTokenExpires?: Date | null;
+}): Promise<StoreProfileData | null> {
+  if (!session.accessToken) {
+    return maybeSyncStoreProfileForShop(session.shop, { force: true });
+  }
+  return syncStoreProfile({
+    id: session.id,
+    shop: session.shop,
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken ?? null,
+    expires: session.expires ?? null,
+    refreshTokenExpires: session.refreshTokenExpires ?? null,
+  });
+}
+
 /** Shopify Partner / automated checker stores — not real merchants. */
 export function isShopifyStaffOrSyntheticShop(input: {
   shop: string;
