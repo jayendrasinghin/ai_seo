@@ -18,8 +18,10 @@ import {
 } from "../admin-auth.server";
 import prisma from "../db.server";
 import { LAUNCH_STORE_TARGET } from "../pricing";
-import { ensureFreshOfflineAccessToken } from "../shop-access.server";
-import { apiVersion } from "../shopify.server";
+import {
+  isShopifyStaffOrSyntheticShop,
+  syncStoreProfile,
+} from "../store-profile.server";
 
 const MAX_REPLY = 5000;
 
@@ -34,126 +36,6 @@ function formatAdminDateTime(value?: string | Date | null) {
     second: "2-digit",
     hour12: false,
   }).format(new Date(value));
-}
-
-type LiveStoreProfile = {
-  storeName: string | null;
-  primaryDomain: string | null;
-  storefrontUrl: string | null;
-  contactEmail: string | null;
-  phone: string | null;
-  address: string | null;
-  country: string | null;
-  timezone: string | null;
-  currency: string | null;
-  planDisplayName: string | null;
-};
-
-async function fetchLiveStoreProfile(
-  shop: string,
-  accessToken: string,
-): Promise<LiveStoreProfile | null> {
-  try {
-    const response = await fetch(`https://${shop}/admin/api/${apiVersion}/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({
-        query: `#graphql
-          query AdminInstalledStoreProfile {
-            shop {
-              name
-              email
-              contactEmail
-              ianaTimezone
-              currencyCode
-              primaryDomain {
-                host
-                url
-              }
-              billingAddress {
-                address1
-                address2
-                city
-                province
-                country
-                zip
-                phone
-              }
-              plan {
-                displayName
-              }
-            }
-          }`,
-      }),
-    });
-    if (!response.ok) {
-      console.error("[admin] shop profile HTTP", shop, response.status);
-      return null;
-    }
-    const json = (await response.json()) as {
-      data?: {
-        shop?: {
-          name?: string | null;
-          email?: string | null;
-          contactEmail?: string | null;
-          ianaTimezone?: string | null;
-          currencyCode?: string | null;
-          primaryDomain?: { host?: string | null; url?: string | null } | null;
-          billingAddress?: {
-            address1?: string | null;
-            address2?: string | null;
-            city?: string | null;
-            province?: string | null;
-            country?: string | null;
-            zip?: string | null;
-            phone?: string | null;
-          } | null;
-          plan?: { displayName?: string | null } | null;
-        };
-      };
-      errors?: Array<{ message?: string }>;
-    };
-    if (json.errors?.length) {
-      console.error("[admin] shop profile GraphQL", shop, json.errors);
-    }
-    const s = json.data?.shop;
-    if (!s) return null;
-    const address = [
-      s.billingAddress?.address1,
-      s.billingAddress?.address2,
-      s.billingAddress?.city,
-      s.billingAddress?.province,
-      s.billingAddress?.zip,
-    ]
-      .filter(Boolean)
-      .join(", ");
-    const phone = (s.billingAddress?.phone || "").trim() || null;
-    const contactEmail =
-      (s.contactEmail || "").trim() || (s.email || "").trim() || null;
-    const host = (s.primaryDomain?.host || "").trim() || null;
-    const storefrontUrl =
-      (s.primaryDomain?.url || "").replace(/\/$/, "") ||
-      (host ? `https://${host}` : null) ||
-      `https://${shop}`;
-    return {
-      storeName: s.name ?? null,
-      primaryDomain: host || s.primaryDomain?.url || null,
-      storefrontUrl,
-      contactEmail,
-      phone,
-      address: address || null,
-      country: s.billingAddress?.country ?? null,
-      timezone: s.ianaTimezone ?? null,
-      currency: s.currencyCode ?? null,
-      planDisplayName: s.plan?.displayName ?? null,
-    };
-  } catch (error) {
-    console.error("[admin] shop profile error", shop, error);
-    return null;
-  }
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -270,6 +152,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     timezone: string | null;
     currency: string | null;
     planDisplayName: string | null;
+    isShopifyTest: boolean;
+    profileSynced: boolean;
   }> = [];
 
   let launchStats = {
@@ -319,11 +203,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         updatedAt: true,
       },
     });
-    launchStats = {
-      installed: installedShopRows.length,
-      target: LAUNCH_STORE_TARGET,
-      remaining: Math.max(0, LAUNCH_STORE_TARGET - installedShopRows.length),
-    };
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
     let savedByShop = new Map<
       string,
@@ -371,45 +250,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const liveProfiles = new Map(
       await Promise.all(
         installedShopRows.map(async (row) => {
-          const token = await ensureFreshOfflineAccessToken(row);
-          if (!token) return [row.shop, null] as const;
-          const live = await fetchLiveStoreProfile(row.shop, token);
-          if (live) {
-            try {
-              await prisma.storeProfile.upsert({
-                where: { shop: row.shop },
-                create: {
-                  shop: row.shop,
-                  storeName: live.storeName,
-                  primaryDomain: live.primaryDomain,
-                  storefrontUrl: live.storefrontUrl,
-                  contactEmail: live.contactEmail,
-                  phone: live.phone,
-                  address: live.address,
-                  country: live.country,
-                  timezone: live.timezone,
-                  currency: live.currency,
-                  planDisplayName: live.planDisplayName,
-                  syncedAt: new Date(),
-                },
-                update: {
-                  storeName: live.storeName,
-                  primaryDomain: live.primaryDomain,
-                  storefrontUrl: live.storefrontUrl,
-                  contactEmail: live.contactEmail,
-                  phone: live.phone,
-                  address: live.address,
-                  country: live.country,
-                  timezone: live.timezone,
-                  currency: live.currency,
-                  planDisplayName: live.planDisplayName,
-                  syncedAt: new Date(),
-                },
-              });
-            } catch (error) {
-              console.error("[admin] StoreProfile upsert failed", row.shop, error);
-            }
-          }
+          const live = await syncStoreProfile(row);
           return [row.shop, live] as const;
         }),
       ),
@@ -418,9 +259,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     installedShops = installedShopRows
       .map((row) => {
         const usage = usageByShop.get(row.shop);
-        const live = liveProfiles.get(row.shop);
-        const saved = savedByShop.get(row.shop);
+        const live = liveProfiles.get(row.shop) ?? null;
+        const saved = savedByShop.get(row.shop) ?? null;
         const profile = live ?? saved ?? null;
+        const contactEmail = profile?.contactEmail ?? null;
+        const planDisplayName = profile?.planDisplayName ?? null;
+        const isShopifyTest = isShopifyStaffOrSyntheticShop({
+          shop: row.shop,
+          contactEmail,
+          planDisplayName,
+        });
         return {
           shop: row.shop,
           plan: usage?.plan ?? "free",
@@ -429,27 +277,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           firstSeenAt: usage?.createdAt ?? null,
           lastActivityAt: usage?.updatedAt ?? null,
           storeName: profile?.storeName ?? null,
-          primaryDomain: profile?.primaryDomain ?? null,
+          primaryDomain: profile?.primaryDomain ?? row.shop,
           storefrontUrl:
             profile?.storefrontUrl ||
             (profile?.primaryDomain
               ? `https://${profile.primaryDomain}`
               : `https://${row.shop}`),
-          contactEmail: profile?.contactEmail ?? null,
+          contactEmail,
           phone: profile?.phone ?? null,
           address: profile?.address ?? null,
           country: profile?.country ?? null,
           timezone: profile?.timezone ?? null,
           currency: profile?.currency ?? null,
-          planDisplayName: profile?.planDisplayName ?? null,
+          planDisplayName,
+          isShopifyTest,
+          profileSynced: Boolean(profile?.storeName || profile?.contactEmail || profile?.planDisplayName),
         };
       })
       .sort((a, b) => {
+        // Real merchants first, then Shopify test shops
+        if (a.isShopifyTest !== b.isShopifyTest) return a.isShopifyTest ? 1 : -1;
         const aTime = new Date(a.lastActivityAt ?? a.firstSeenAt ?? 0).getTime();
         const bTime = new Date(b.lastActivityAt ?? b.firstSeenAt ?? 0).getTime();
         if (bTime !== aTime) return bTime - aTime;
         return a.shop.localeCompare(b.shop);
       });
+
+    const merchantCount = installedShops.filter((s) => !s.isShopifyTest).length;
+    launchStats = {
+      installed: merchantCount,
+      target: LAUNCH_STORE_TARGET,
+      remaining: Math.max(0, LAUNCH_STORE_TARGET - merchantCount),
+    };
   }
 
   return {
@@ -990,14 +849,25 @@ export default function AdminIndexPage() {
                       {launchStats.installed} / {launchStats.target}
                     </div>
                     <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                      {launchStats.remaining} stores remaining at launch pricing
+                      {launchStats.remaining} merchant stores remaining at launch
+                      pricing (Shopify test stores excluded)
                     </p>
                   </div>
                 </div>
                 <div className="card-grid">
                   {installedShops.map((s) => (
                     <div key={s.shop} className="card">
-                      <div className="shop">{s.storeName || s.shop}</div>
+                      <div className="shop">
+                        {s.storeName || s.shop}
+                        {s.isShopifyTest ? (
+                          <span
+                            className="pill pending"
+                            style={{ marginLeft: 8, fontSize: 11 }}
+                          >
+                            Shopify test
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="meta" style={{ marginTop: 6 }}>
                         Domain: {s.primaryDomain || s.shop}
                       </p>
@@ -1017,7 +887,9 @@ export default function AdminIndexPage() {
                         )}
                       </p>
                       <p className="meta">
-                        Shopify plan: {s.planDisplayName || s.plan}
+                        Shopify plan: {s.planDisplayName || "—"}
+                        {" · "}
+                        App plan: {s.plan}
                       </p>
                       <p className="meta">
                         AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}
@@ -1033,6 +905,12 @@ export default function AdminIndexPage() {
                         {s.currency ? ` · ${s.currency}` : ""}
                       </p>
                       {s.address ? <p className="meta">Address: {s.address}</p> : null}
+                      {!s.profileSynced ? (
+                        <p className="meta" style={{ color: "#b45309" }}>
+                          Profile not synced yet — merchant may need to reopen the app
+                          once so we can refresh the access token.
+                        </p>
+                      ) : null}
                       <p className="meta">
                         First seen:{" "}
                         {formatAdminDateTime(s.firstSeenAt)} · Last activity:{" "}

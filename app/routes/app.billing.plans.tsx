@@ -238,7 +238,7 @@ export default function BillingPlansPage() {
               <span className="seoi-plan-card__badge">
                 {isStarter ? "Current" : "Best value"}
               </span>
-              <p className="seoi-plan-card__tier">Starter</p>
+              <p className="seoi-plan-card__tier">Basic</p>
               <h3>{STARTER_PLAN_NAME}</h3>
               <div className="seoi-plan-card__price">
                 <span className="seoi-plan-card__amount">

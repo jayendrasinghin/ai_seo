@@ -1,9 +1,9 @@
 /**
  * StoreUsage.plan values synced from Shopify Billing (see billing.server.ts).
- * - free: SEO Starter Free (100 AI SEO / month)
- * - seo: AI SEO Starter — unlimited AI SEO + SEO Suite
+ * - free: Free (100 AI SEO / month)
+ * - seo: Basic — unlimited AI SEO + SEO Suite + PaySync
  * - image: legacy AI Image–only (treated like paid for suite unlock)
- * - seo_image: SEO Pro Plus Image — Starter + AI images
+ * - seo_image: Pro — Basic + AI images
  */
 
 export function getEffectivePlan(
