@@ -8,6 +8,7 @@ import { lastShopSetCookieHeader } from "../last-shop.server";
 
 import { authenticate } from "../shopify.server";
 import { maybeSyncStoreProfileForShop } from "../store-profile.server";
+import { paysyncEnabled } from "../paysync-feature.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -20,7 +21,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // eslint-disable-next-line no-undef
   return Response.json(
-    { apiKey: process.env.SHOPIFY_API_KEY || "" },
+    {
+      apiKey: process.env.SHOPIFY_API_KEY || "",
+      paysyncEnabled: paysyncEnabled(),
+    },
     setCookie ? { headers: { "Set-Cookie": setCookie } } : undefined,
   );
 };
@@ -54,13 +58,15 @@ function isSeoWorkspacePath(pathname: string, search: string) {
 
 export default function App() {
   useSeoiCssLock();
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, paysyncEnabled: paySyncOn } = useLoaderData<typeof loader>();
   const { pathname, search } = useLocation();
   const onPaySync =
-    isPaySyncPath(pathname) ||
-    (isSupportPath(pathname) && supportProductFromSearch(search) === "paysync");
+    paySyncOn &&
+    (isPaySyncPath(pathname) ||
+      (isSupportPath(pathname) && supportProductFromSearch(search) === "paysync"));
   const onSeoWorkspace = isSeoWorkspacePath(pathname, search);
-  const onPaySyncOnboarding = pathname.startsWith("/app/paysync/onboarding");
+  const onPaySyncOnboarding =
+    paySyncOn && pathname.startsWith("/app/paysync/onboarding");
   const onHome = pathname === "/app" || pathname === "/app/";
 
   return (
@@ -79,13 +85,15 @@ export default function App() {
               >
                 SEO &amp; Image Optimization
               </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/paysync", search, {
-                  product: null,
-                })}
-              >
-                PayPal and Razorpay Sync
-              </s-link>
+              {paySyncOn ? (
+                <s-link
+                  href={withEmbeddedSearch("/app/paysync", search, {
+                    product: null,
+                  })}
+                >
+                  PayPal and Razorpay Sync
+                </s-link>
+              ) : null}
             </>
           ) : null}
 

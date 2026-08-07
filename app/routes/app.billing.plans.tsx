@@ -21,7 +21,7 @@ import {
   FREE_AI_SEO_MONTHLY,
   FREE_PLAN_NAME,
   LAUNCH_STORE_TARGET,
-  PLAN_FEATURES,
+  planFeaturesForListing,
   PRO_PLAN_NAME,
   SEO_PLAN_LABEL_SHORT,
   SEO_PLAN_USD_PER_MONTH,
@@ -33,6 +33,7 @@ import {
   planImageAllowed,
   planSeoUnlimited,
 } from "../plan-helpers";
+import { paysyncEnabled } from "../paysync-feature.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -56,6 +57,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     aiImageUsed: usage.aiImageUsed,
     billingTestMode: billingChargesAreTest(),
     partnerDevelopment,
+    showPaySync: paysyncEnabled(),
   };
 };
 
@@ -103,6 +105,7 @@ export default function BillingPlansPage() {
     freeQuotaLimit,
     billingTestMode,
     partnerDevelopment,
+    showPaySync,
   } = useLoaderData<typeof loader>();
   const { search } = useLocation();
   const params = new URLSearchParams(search.replaceAll("&amp;", "&"));
@@ -226,7 +229,7 @@ export default function BillingPlansPage() {
                 <span className="seoi-plan-card__period">forever</span>
               </div>
               <ul>
-                {PLAN_FEATURES.free.map((line) => (
+                {planFeaturesForListing("free", showPaySync).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
@@ -253,7 +256,7 @@ export default function BillingPlansPage() {
                 Launch yearly for the first {LAUNCH_STORE_TARGET} stores.
               </p>
               <ul>
-                {PLAN_FEATURES.starter.map((line) => (
+                {planFeaturesForListing("starter", showPaySync).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
@@ -280,7 +283,7 @@ export default function BillingPlansPage() {
                 {AI_IMAGE_PLAN_LABEL_SHORT}
               </p>
               <ul>
-                {PLAN_FEATURES.pro.map((line) => (
+                {planFeaturesForListing("pro", showPaySync).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>

@@ -13,6 +13,7 @@ import {
   normalizeSupportProduct,
   type SupportProductKey,
 } from "../admin-auth.server";
+import { paysyncEnabled } from "../paysync-feature.server";
 import { authenticate } from "../shopify.server";
 import { PaySyncHomeButton, SeoHomeButton } from "../HomeButton";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -39,7 +40,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
   const url = new URL(request.url);
-  const product = normalizeSupportProduct(url.searchParams.get("product"));
+  let product = normalizeSupportProduct(url.searchParams.get("product"));
+  if (!paysyncEnabled()) {
+    product = "seoi";
+  }
   const appId = await getSupportAppIdForProduct(product);
 
   const delegate = supportMessageDelegate();
@@ -195,7 +199,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
-  const product = normalizeSupportProduct(String(formData.get("product") ?? ""));
+  let product = normalizeSupportProduct(String(formData.get("product") ?? ""));
+  if (!paysyncEnabled()) {
+    product = "seoi";
+  }
   let appId: string | null = null;
   try {
     appId = await getSupportAppIdForProduct(product);

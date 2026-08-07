@@ -1221,6 +1221,11 @@ body {
   gap: 18px;
 }
 
+.seoi-hub-grid--seo-only {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 560px;
+}
+
 .seoi-hub-card {
   display: flex;
   min-height: 360px;

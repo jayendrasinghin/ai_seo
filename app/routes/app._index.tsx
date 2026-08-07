@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { EmbeddedNavLink } from "../embedded-nav-link";
+import { paysyncEnabled } from "../paysync-feature.server";
 import prisma from "../db.server";
 import {
   paypalConnectionRepository,
@@ -12,6 +13,7 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
+  const showPaySync = paysyncEnabled();
 
   const latestScan = await prisma.imageScanRun.findFirst({
     where: { shop, status: "completed" },
@@ -20,33 +22,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   let paypalConnected = false;
-  try {
-    const shopRecord = await shopRepository.findByDomain(shop);
-    if (shopRecord) {
-      const connection = await paypalConnectionRepository.findByShopId(
-        shopRecord.id,
-      );
-      paypalConnected = Boolean(connection);
+  if (showPaySync) {
+    try {
+      const shopRecord = await shopRepository.findByDomain(shop);
+      if (shopRecord) {
+        const connection = await paypalConnectionRepository.findByShopId(
+          shopRecord.id,
+        );
+        paypalConnected = Boolean(connection);
+      }
+    } catch {
+      paypalConnected = false;
     }
-  } catch {
-    paypalConnected = false;
   }
 
   return {
     imageIssues: latestScan?.issuesOpen ?? null,
     imagesScanned: latestScan?.imagesScanned ?? null,
     paypalConnected,
+    showPaySync,
   };
 };
 
 export default function HomeHub() {
-  const { imageIssues, imagesScanned, paypalConnected } =
+  const { imageIssues, imagesScanned, paypalConnected, showPaySync } =
     useLoaderData<typeof loader>();
 
   return (
     <s-page heading="Home">
       <s-section>
-        <div className="seoi-hub-grid">
+        <div className={`seoi-hub-grid${showPaySync ? "" : " seoi-hub-grid--seo-only"}`}>
           <article className="seoi-hub-card seoi-hub-card--seo">
             <div className="seoi-hub-card__badge">SEO</div>
             <h2>SEO &amp; Image Optimization</h2>
@@ -75,6 +80,7 @@ export default function HomeHub() {
             </div>
           </article>
 
+          {showPaySync ? (
           <article className="seoi-hub-card seoi-hub-card--sync">
             <div className="seoi-hub-card__badge">Payments</div>
             <h2>PayPal and Razorpay Sync</h2>
@@ -99,6 +105,7 @@ export default function HomeHub() {
               </EmbeddedNavLink>
             </div>
           </article>
+          ) : null}
         </div>
       </s-section>
     </s-page>

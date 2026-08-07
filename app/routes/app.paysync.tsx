@@ -2,7 +2,8 @@ import type { LoaderFunctionArgs } from "react-router";
 import { Navigate, Outlet, useLoaderData, useLocation } from "react-router";
 import { authenticate } from "../shopify.server";
 import { PaySyncHomeButton } from "../HomeButton";
-import { withEmbeddedSearch } from "../embedded-nav";
+import { embeddedRedirect, withEmbeddedSearch } from "../embedded-nav";
+import { paysyncEnabled } from "../paysync-feature.server";
 import {
   paypalConnectionRepository,
   settingsRepository,
@@ -10,6 +11,10 @@ import {
 } from "../repositories";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  if (!paysyncEnabled()) {
+    throw embeddedRedirect("/app/seo-optimize", request);
+  }
+
   const { session } = await authenticate.admin(request);
   const shop = await shopRepository.upsertByDomain(session.shop);
   const settings = await shopRepository.getOrCreateSettings(shop.id);

@@ -95,3 +95,15 @@ export const PLAN_FEATURES = {
     "PaySync PayPal & Razorpay",
   ],
 } as const;
+
+/** Plan bullets for UI / billing page; omit PaySync lines when hidden for App Store review. */
+export function planFeaturesForListing(
+  tier: keyof typeof PLAN_FEATURES,
+  includePaySync = true,
+): string[] {
+  const lines = [...PLAN_FEATURES[tier]];
+  if (includePaySync) return lines;
+  return lines.filter(
+    (line) => !/paysync|paypal|razorpay|tracking sync/i.test(line),
+  );
+}

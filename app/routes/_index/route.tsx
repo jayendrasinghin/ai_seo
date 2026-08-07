@@ -3,6 +3,7 @@ import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { readLastShop } from "../../last-shop.server";
+import { paysyncEnabled } from "../../paysync-feature.server";
 
 import styles from "./styles.module.css";
 
@@ -59,23 +60,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const lastShop = await readLastShop(request);
+  const showPaySync = paysyncEnabled();
 
   return {
     showForm: Boolean(login),
     lastShop: lastShop ?? "",
+    showPaySync,
   };
 };
 
 export default function App() {
-  const { showForm, lastShop } = useLoaderData<typeof loader>();
+  const { showForm, lastShop, showPaySync } = useLoaderData<typeof loader>();
 
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>Seoi — SEO &amp; PaySync</h1>
+        <h1 className={styles.heading}>
+          Seoi — SEO{showPaySync ? " & PaySync" : ""}
+        </h1>
         <p className={styles.text}>
-          AI SEO, image optimization, and PayPal / Razorpay tracking sync for
-          Shopify.
+          {showPaySync
+            ? "AI SEO, image optimization, and PayPal / Razorpay tracking sync for Shopify."
+            : "AI SEO and image optimization for Shopify product listings."}
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">
@@ -101,10 +107,12 @@ export default function App() {
             <strong>SEO &amp; images</strong> — product copy, alt text, and SEO
             suite tools.
           </li>
-          <li>
-            <strong>PaySync</strong> — sync PayPal / Razorpay tracking from
-            Shopify fulfillments.
-          </li>
+          {showPaySync ? (
+            <li>
+              <strong>PaySync</strong> — sync PayPal / Razorpay tracking from
+              Shopify fulfillments.
+            </li>
+          ) : null}
           <li>
             <strong>Tip</strong> — open from Shopify Admin → Apps → Seoi for the
             embedded app. Or enter your{" "}
