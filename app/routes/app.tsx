@@ -9,10 +9,23 @@ import { lastShopSetCookieHeader } from "../last-shop.server";
 import { authenticate } from "../shopify.server";
 import { maybeSyncStoreProfileForShop } from "../store-profile.server";
 import { paysyncEnabled } from "../paysync-feature.server";
+import {
+  planHandleFromRequest,
+  shouldRetryBillingSync,
+  syncStoreUsagePlanFromShopify,
+} from "../billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const setCookie = await lastShopSetCookieHeader(session.shop);
+
+  // Keep entitlements in sync after managed-pricing upgrade/downgrade.
+  await syncStoreUsagePlanFromShopify(admin, session.shop, {
+    planHandle: planHandleFromRequest(request),
+    retry: shouldRetryBillingSync(request),
+  }).catch((error) => {
+    console.error("[app] billing sync failed", session.shop, error);
+  });
 
   // Capture merchant email / store profile on app open (throttled to once/day).
   void maybeSyncStoreProfileForShop(session.shop).catch((error) => {

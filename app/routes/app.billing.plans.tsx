@@ -11,6 +11,9 @@ import prisma from "../db.server";
 import {
   billingChargesAreTest,
   isPartnerDevelopmentStore,
+  managedPricingPlansUrl,
+  planHandleFromRequest,
+  shouldRetryBillingSync,
   syncStoreUsagePlanFromShopify,
 } from "../billing.server";
 import {
@@ -40,7 +43,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = session.shop;
   const partnerDevelopment = await isPartnerDevelopmentStore(admin);
 
-  await syncStoreUsagePlanFromShopify(admin, shop);
+  const syncedPlan = await syncStoreUsagePlanFromShopify(admin, shop, {
+    planHandle: planHandleFromRequest(request),
+    retry: shouldRetryBillingSync(request),
+  });
   const usage = await prisma.storeUsage.upsert({
     where: { shop },
     update: {},
@@ -48,6 +54,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const effectivePlan = getEffectivePlan(usage);
+  const apiKey = process.env.SHOPIFY_API_KEY || "";
+  const changePlanUrl = managedPricingPlansUrl(shop, apiKey);
 
   return {
     plan: usage.plan,
@@ -58,6 +66,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     billingTestMode: billingChargesAreTest(),
     partnerDevelopment,
     showPaySync: paysyncEnabled(),
+    changePlanUrl,
+    syncedPlan,
   };
 };
 
@@ -106,6 +116,8 @@ export default function BillingPlansPage() {
     billingTestMode,
     partnerDevelopment,
     showPaySync,
+    changePlanUrl,
+    syncedPlan,
   } = useLoaderData<typeof loader>();
   const { search } = useLocation();
   const params = new URLSearchParams(search.replaceAll("&amp;", "&"));
@@ -153,8 +165,9 @@ export default function BillingPlansPage() {
             ) : null}
             {returned ? (
               <div className="seoi-callout seoi-callout--success">
-                You returned from Shopify managed pricing. Your plan should
-                update shortly — refresh if it still looks wrong.
+                Plan updated from Shopify billing
+                {syncedPlan ? ` — active plan: ${currentPlanLabel(syncedPlan, syncedPlan)}` : ""}.
+                Entitlements below reflect your subscription.
               </div>
             ) : null}
           </div>
@@ -207,10 +220,20 @@ export default function BillingPlansPage() {
             <div>
               <h3>Available plans</h3>
               <p>
-                Switch plans from your Shopify app listing — billing is managed
-                by Shopify.
+                Switch plans anytime in Shopify — billing is managed by Shopify
+                App Pricing.
               </p>
             </div>
+            {changePlanUrl ? (
+              <a
+                className="seoi-nav-button seoi-nav-button--secondary"
+                href={changePlanUrl}
+                target="_top"
+                rel="noreferrer"
+              >
+                Change plan
+              </a>
+            ) : null}
           </div>
 
           <div className="seoi-plan-grid">
@@ -300,19 +323,35 @@ export default function BillingPlansPage() {
           </div>
           <ul className="seoi-billing-steps">
             <li>
-              Open this app’s listing in Shopify Admin to choose or change a
-              plan.
+              Use <strong>Change plan</strong> below to upgrade or downgrade in
+              Shopify — no support ticket or reinstall required.
             </li>
             <li>
-              Plan approval, decline, and re-approval happen in Shopify’s
+              Plan approval, decline, and re-approval happen in Shopify&apos;s
               checkout flow.
             </li>
             <li>
-              If a charge was declined before, Shopify will ask again when you
-              reinstall and select a paid plan.
+              Charges appear in Shopify Admin → Settings → Billing → App
+              charges after you confirm a plan.
             </li>
           </ul>
           <div className="seoi-billing-actions">
+            {changePlanUrl ? (
+              <a
+                className="seoi-nav-button seoi-nav-button--primary"
+                href={changePlanUrl}
+                target="_top"
+                rel="noreferrer"
+              >
+                Change plan
+              </a>
+            ) : null}
+            <EmbeddedNavLink
+              hrefPathname="/app/billing/plans"
+              variant="secondary"
+            >
+              Refresh plan status
+            </EmbeddedNavLink>
             <EmbeddedNavLink
               hrefPathname="/app/seo-optimize"
               variant="secondary"

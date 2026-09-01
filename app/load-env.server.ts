@@ -36,26 +36,38 @@ if (!loaded) {
  * Do NOT force SHOPIFY_APP_URL — `shopify app dev` tunnel URL must win.
  */
 const FORCE_FROM_ENV =
-  /^(OPENAI_[A-Z0-9_]+|SHOPIFY_API_KEY|SHOPIFY_API_SECRET|SCOPES)$/;
+  /^(OPENAI_[A-Z0-9_]+|SHOPIFY_API_KEY|SHOPIFY_API_SECRET|SCOPES|PAYSYNC_ENABLED)$/;
+
+function parseEnvValue(raw: string): string {
+  let value = raw.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  return value;
+}
 
 if (envFilePath) {
   try {
     const text = readFileSync(envFilePath, "utf8");
+    let paysyncInFile = false;
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
       const match = trimmed.match(/^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
       if (!match || !FORCE_FROM_ENV.test(match[1])) continue;
-      let value = match[2].trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      process.env[match[1]] = value;
+      if (match[1] === "PAYSYNC_ENABLED") paysyncInFile = true;
+      process.env[match[1]] = parseEnvValue(match[2]);
+    }
+    // PaySync is off unless .env explicitly sets PAYSYNC_ENABLED=true (ignore PM2/shell).
+    if (!paysyncInFile) {
+      delete process.env.PAYSYNC_ENABLED;
     }
   } catch {
     // ignore unreadable .env
   }
+} else {
+  delete process.env.PAYSYNC_ENABLED;
 }
