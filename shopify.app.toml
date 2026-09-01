@@ -1,5 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
+handle = "ai-product-descriptions-seo"
+
 client_id = "3b46a7d5b955f46d2298724437e64a02"
 name = "Seoi — SEO & Images"
 # /app is the embedded home — opening bare / shows the public shop-domain form.

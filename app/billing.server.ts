@@ -68,10 +68,47 @@ function planFromSubscriptionName(name: string | undefined): string | null {
   return null;
 }
 
-/** Shopify Admin → App embeds → change plan (Managed / App Pricing). */
-export function managedPricingPlansUrl(shop: string, apiKey: string): string {
+/** Shopify Admin → plan selection (Managed / App Pricing). Uses app handle, NOT API key. */
+export function managedPricingPlansUrl(
+  shop: string,
+  appHandle: string,
+): string {
   const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
-  return `https://admin.shopify.com/store/${storeHandle}/charges/${apiKey}/pricing_plans`;
+  return `https://admin.shopify.com/store/${storeHandle}/charges/${appHandle}/pricing_plans`;
+}
+
+const APP_HANDLE_QUERY = `#graphql
+  query SeoiAppHandle {
+    currentAppInstallation {
+      app {
+        handle
+      }
+    }
+  }
+`;
+
+/** App handle from Admin API (matches shopify.app.toml / Partner Dashboard). */
+export async function getShopifyAppHandle(
+  admin: AdminApiContext,
+): Promise<string> {
+  const fromEnv = process.env.SHOPIFY_APP_HANDLE?.trim();
+  if (fromEnv) return fromEnv;
+
+  try {
+    const response = await admin.graphql(APP_HANDLE_QUERY);
+    const json = await response.json();
+    const handle = (
+      json.data as {
+        currentAppInstallation?: { app?: { handle?: string } };
+      }
+    )?.currentAppInstallation?.app?.handle?.trim();
+    if (handle) return handle;
+  } catch {
+    // fall through to default
+  }
+
+  // Last resort — set SHOPIFY_APP_HANDLE in .env if this differs on your app.
+  return "ai-product-descriptions-seo";
 }
 
 function amountMatchesPlan(amountStr: string, usd: number): boolean {

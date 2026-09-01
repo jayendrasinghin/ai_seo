@@ -11,7 +11,6 @@ import prisma from "../db.server";
 import {
   billingChargesAreTest,
   isPartnerDevelopmentStore,
-  managedPricingPlansUrl,
   planHandleFromRequest,
   shouldRetryBillingSync,
   syncStoreUsagePlanFromShopify,
@@ -54,8 +53,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const effectivePlan = getEffectivePlan(usage);
-  const apiKey = process.env.SHOPIFY_API_KEY || "";
-  const changePlanUrl = managedPricingPlansUrl(shop, apiKey);
 
   return {
     plan: usage.plan,
@@ -66,7 +63,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     billingTestMode: billingChargesAreTest(),
     partnerDevelopment,
     showPaySync: paysyncEnabled(),
-    changePlanUrl,
     syncedPlan,
   };
 };
@@ -116,7 +112,6 @@ export default function BillingPlansPage() {
     billingTestMode,
     partnerDevelopment,
     showPaySync,
-    changePlanUrl,
     syncedPlan,
   } = useLoaderData<typeof loader>();
   const { search } = useLocation();
@@ -224,16 +219,13 @@ export default function BillingPlansPage() {
                 App Pricing.
               </p>
             </div>
-            {changePlanUrl ? (
-              <a
-                className="seoi-nav-button seoi-nav-button--secondary"
-                href={changePlanUrl}
-                target="_top"
-                rel="noreferrer"
-              >
-                Change plan
-              </a>
-            ) : null}
+            <EmbeddedNavLink
+              hrefPathname="/app/billing/change-plan"
+              search={search}
+              variant="secondary"
+            >
+              Change plan
+            </EmbeddedNavLink>
           </div>
 
           <div className="seoi-plan-grid">
@@ -336,16 +328,13 @@ export default function BillingPlansPage() {
             </li>
           </ul>
           <div className="seoi-billing-actions">
-            {changePlanUrl ? (
-              <a
-                className="seoi-nav-button seoi-nav-button--primary"
-                href={changePlanUrl}
-                target="_top"
-                rel="noreferrer"
-              >
-                Change plan
-              </a>
-            ) : null}
+            <EmbeddedNavLink
+              hrefPathname="/app/billing/change-plan"
+              search={search}
+              variant="button"
+            >
+              Change plan
+            </EmbeddedNavLink>
             <EmbeddedNavLink
               hrefPathname="/app/billing/plans"
               variant="secondary"
