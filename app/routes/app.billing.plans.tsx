@@ -10,7 +10,9 @@ import { EmbeddedNavLink } from "../embedded-nav-link";
 import prisma from "../db.server";
 import {
   billingChargesAreTest,
+  getShopifyAppHandle,
   isPartnerDevelopmentStore,
+  managedPricingPlansUrl,
   planHandleFromRequest,
   shouldRetryBillingSync,
   syncStoreUsagePlanFromShopify,
@@ -53,6 +55,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const effectivePlan = getEffectivePlan(usage);
+  const appHandle = await getShopifyAppHandle(admin);
+  const changePlanUrl = managedPricingPlansUrl(shop, appHandle);
 
   return {
     plan: usage.plan,
@@ -64,6 +68,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     partnerDevelopment,
     showPaySync: paysyncEnabled(),
     syncedPlan,
+    changePlanUrl,
   };
 };
 
@@ -113,6 +118,7 @@ export default function BillingPlansPage() {
     partnerDevelopment,
     showPaySync,
     syncedPlan,
+    changePlanUrl,
   } = useLoaderData<typeof loader>();
   const { search } = useLocation();
   const params = new URLSearchParams(search.replaceAll("&amp;", "&"));
@@ -219,13 +225,14 @@ export default function BillingPlansPage() {
                 App Pricing.
               </p>
             </div>
-            <EmbeddedNavLink
-              hrefPathname="/app/billing/change-plan"
-              search={search}
-              variant="secondary"
+            <a
+              className="seoi-nav-button seoi-nav-button--secondary"
+              href={changePlanUrl}
+              target="_top"
+              rel="noreferrer"
             >
               Change plan
-            </EmbeddedNavLink>
+            </a>
           </div>
 
           <div className="seoi-plan-grid">
@@ -328,13 +335,14 @@ export default function BillingPlansPage() {
             </li>
           </ul>
           <div className="seoi-billing-actions">
-            <EmbeddedNavLink
-              hrefPathname="/app/billing/change-plan"
-              search={search}
-              variant="button"
+            <a
+              className="seoi-nav-button seoi-nav-button--primary"
+              href={changePlanUrl}
+              target="_top"
+              rel="noreferrer"
             >
               Change plan
-            </EmbeddedNavLink>
+            </a>
             <EmbeddedNavLink
               hrefPathname="/app/billing/plans"
               variant="secondary"

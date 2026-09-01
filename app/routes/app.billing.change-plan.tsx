@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import type { LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import {
   getShopifyAppHandle,
@@ -6,17 +8,27 @@ import {
 } from "../billing.server";
 
 /**
- * Server redirect to Shopify App Pricing plan picker (breaks out of iframe).
- * Do not use a plain external link — that often lands on Settings → Apps first.
+ * Fallback route when linked directly. Client assigns top window so Shopify
+ * plan picker opens (SPA navigate to this route cannot use server redirect).
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, redirect, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const appHandle = await getShopifyAppHandle(admin);
   const pricingUrl = managedPricingPlansUrl(session.shop, appHandle);
-
-  return redirect(pricingUrl, { target: "_top" });
+  return { pricingUrl };
 };
 
 export default function BillingChangePlanRedirect() {
-  return null;
+  const { pricingUrl } = useLoaderData<typeof loader>();
+
+  useEffect(() => {
+    const topWindow = window.top ?? window;
+    topWindow.location.assign(pricingUrl);
+  }, [pricingUrl]);
+
+  return (
+    <s-page heading="Change plan">
+      <s-text>Opening Shopify plan selection…</s-text>
+    </s-page>
+  );
 }
