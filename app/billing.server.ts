@@ -22,6 +22,7 @@ const ACTIVE_SUBS_QUERY = `#graphql
                   amount
                 }
                 interval
+                planHandle
               }
             }
           }
@@ -137,6 +138,7 @@ type ActiveSub = {
       pricingDetails?: {
         __typename?: string;
         price?: { amount?: string };
+        planHandle?: string | null;
       };
     };
   }>;
@@ -154,12 +156,18 @@ function derivePlanFromActiveSubscriptions(data: unknown): string {
     if (sub.status !== "ACTIVE") continue;
 
     const fromName = planFromSubscriptionName(sub.name);
+    if (fromName === "free") continue;
     if (fromName === "seo") hasSeo = true;
     if (fromName === "seo_image") hasImage = true;
 
     for (const line of sub.lineItems ?? []) {
       const details = line.plan?.pricingDetails;
       if (details?.__typename !== "AppRecurringPricing") continue;
+
+      const fromHandle = planFromManagedHandle(details.planHandle);
+      if (fromHandle === "seo") hasSeo = true;
+      if (fromHandle === "seo_image") hasImage = true;
+
       const amount = details.price?.amount;
       if (amount == null) continue;
       if (amountMatchesSeo(amount)) hasSeo = true;
@@ -174,21 +182,9 @@ function derivePlanFromActiveSubscriptions(data: unknown): string {
   return "free";
 }
 
-function hasActivePaidSubscription(data: unknown): boolean {
-  const installation = (
-    data as { currentAppInstallation?: { activeSubscriptions?: ActiveSub[] } }
-  )?.currentAppInstallation;
-  const subs = installation?.activeSubscriptions ?? [];
-  for (const sub of subs) {
-    if (sub.status !== "ACTIVE") continue;
-    for (const line of sub.lineItems ?? []) {
-      const details = line.plan?.pricingDetails;
-      if (details?.__typename !== "AppRecurringPricing") continue;
-      const amount = details.price?.amount;
-      if (amount != null && parseFloat(amount) > 0) return true;
-    }
-  }
-  return false;
+/** True when Admin API shows a paid plan (including $0 test billing on dev stores). */
+function hasActiveBillableSubscription(data: unknown): boolean {
+  return derivePlanFromActiveSubscriptions(data) !== "free";
 }
 
 /** Prefer Shopify redirect handle; otherwise Admin API subscription state. */
@@ -215,8 +211,8 @@ export async function syncStoreUsagePlanFromShopify(
 
   let plan = resolveStorePlan(fromGraph, fromHandle);
 
-  // Downgrade to Free: no paid subscription in Admin API.
-  if (!fromHandle && !hasActivePaidSubscription(data)) {
+  // Downgrade to Free only when GraphQL shows no billable subscription.
+  if (!fromHandle && !hasActiveBillableSubscription(data)) {
     plan = "free";
   }
 
@@ -226,7 +222,7 @@ export async function syncStoreUsagePlanFromShopify(
     data = await fetchActiveSubscriptions(admin);
     fromGraph = derivePlanFromActiveSubscriptions(data);
     plan = resolveStorePlan(fromGraph, fromHandle);
-    if (!fromHandle && !hasActivePaidSubscription(data)) {
+    if (!fromHandle && !hasActiveBillableSubscription(data)) {
       plan = "free";
     }
   }
