@@ -53,16 +53,17 @@ export default function HomeHub() {
       <s-section>
         <div className={`seoi-hub-grid${showPaySync ? "" : " seoi-hub-grid--seo-only"}`}>
           <article className="seoi-hub-card seoi-hub-card--seo">
-            <div className="seoi-hub-card__badge">SEO</div>
-            <h2>SEO &amp; Image Optimization</h2>
+            <div className="seoi-hub-card__badge">AI SEO</div>
+            <h2>AI SEO &amp; Image Optimization</h2>
             <p>
-              Image SEO, product tools, SEO Suite, stock, and inventory — all in
+              Image SEO, product tools, AI SEO Suite, stock, and inventory — all in
               one workspace.
             </p>
             <ul className="seoi-hub-card__list">
+              <li>Bulk AI ALT text for product images</li>
               <li>Image SEO scan &amp; AI alt text</li>
-              <li>Product descriptions &amp; SEO fields</li>
-              <li>SEO Suite (IndexNow, sitemap, schema…)</li>
+              <li>Product descriptions &amp; AI SEO fields</li>
+              <li>AI SEO Suite (IndexNow, sitemap, schema…)</li>
               <li>Stock alerts &amp; new products</li>
             </ul>
             <div className="seoi-hub-card__meta">
@@ -75,7 +76,7 @@ export default function HomeHub() {
                 hrefPathname="/app/seo-optimize"
                 variant="button"
               >
-                SEO &amp; Image Optimization
+                AI SEO &amp; Image Optimization
               </EmbeddedNavLink>
             </div>
           </article>

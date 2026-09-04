@@ -87,7 +87,7 @@ export default function AutoRedirectPage() {
 
       <s-section>
         <s-text tone="neutral">
-          When a product is deleted, Seoi can automatically create a 301 from{" "}
+          When a product is deleted, SEOi can automatically create a 301 from{" "}
           <code>/products/&#123;handle&#125;</code> so old links keep sending shoppers somewhere
           useful.
         </s-text>

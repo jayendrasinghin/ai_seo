@@ -2,13 +2,12 @@ import { PLAN_FEATURES } from "./pricing";
 import { planFeaturesForListing as filterPlanFeatures } from "./pricing";
 
 /**
- * PaySync visibility toggle for App Store review vs production.
+ * PaySync visibility toggle.
  *
- * Set PAYSYNC_ENABLED=true in .env when PaySync should appear in nav, home hub,
- * billing copy, and /app/paysync routes. Default is hidden (SEO-only surface).
+ * Enabled by default. Set PAYSYNC_ENABLED=false in .env to hide PaySync (e.g. SEO-only review build).
  */
 export function paysyncEnabled(): boolean {
-  return process.env.PAYSYNC_ENABLED === "true";
+  return process.env.PAYSYNC_ENABLED !== "false";
 }
 
 /** Plan bullet lines with PaySync entries removed when the module is hidden. */

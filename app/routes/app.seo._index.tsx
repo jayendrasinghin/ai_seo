@@ -50,7 +50,7 @@ export default function SeoHubPage() {
     useLoaderData<typeof loader>();
 
   return (
-    <s-page heading="SEO Suite">
+    <s-page heading="AI SEO Suite">
       <SeoHomeButton />
       <div className="seoi-page-hero">
         <div className="seoi-page-hero__content">

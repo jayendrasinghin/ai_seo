@@ -66,6 +66,7 @@ export const AI_IMAGE_PLAN_LABEL_SHORT = `$${AI_IMAGE_PLAN_USD_PER_MONTH}/mo · 
 export const PLAN_FEATURES = {
   free: [
     `${FREE_AI_SEO_MONTHLY} AI SEO optimizations/month`,
+    "Bulk AI ALT text for product images",
     "Product SEO scan",
     "AI titles and descriptions",
     "Basic image ALT text",

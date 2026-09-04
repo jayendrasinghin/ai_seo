@@ -61,13 +61,11 @@ if (envFilePath) {
       if (match[1] === "PAYSYNC_ENABLED") paysyncInFile = true;
       process.env[match[1]] = parseEnvValue(match[2]);
     }
-    // PaySync is off unless .env explicitly sets PAYSYNC_ENABLED=true (ignore PM2/shell).
+    // PaySync is on by default; only .env can set PAYSYNC_ENABLED=false (ignore PM2/shell leaks).
     if (!paysyncInFile) {
       delete process.env.PAYSYNC_ENABLED;
     }
   } catch {
     // ignore unreadable .env
   }
-} else {
-  delete process.env.PAYSYNC_ENABLED;
 }

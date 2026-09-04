@@ -8,7 +8,7 @@
     "enable_breadcrumb_schema": "BreadcrumbList schema",
     "enable_organization_schema": "Organization schema",
     "enable_website_schema": "WebSite + SearchAction schema",
-    "enable_speed_boost": "Enable Seoi Speed Boost",
+    "enable_speed_boost": "Enable SEOi Speed Boost",
     "enable_lazy_load": "Lazy-load below-fold images",
     "enable_preload": "Preload hero image + DNS prefetch",
     "enable_script_defer": "Defer known third-party scripts"

@@ -14,6 +14,7 @@ import {
   shouldRetryBillingSync,
   syncStoreUsagePlanFromShopify,
 } from "../billing.server";
+import { appNavLabel } from "../app-nav-label";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -59,16 +60,6 @@ function supportProductFromSearch(search: string): "paysync" | "seoi" {
   return "seoi";
 }
 
-function isSeoWorkspacePath(pathname: string, search: string) {
-  if (pathname === "/app" || pathname === "/app/") return false;
-  if (isPaySyncPath(pathname)) return false;
-  // Shared /app/support: keep PaySync nav when opened from PaySync.
-  if (isSupportPath(pathname) && supportProductFromSearch(search) === "paysync") {
-    return false;
-  }
-  return pathname.startsWith("/app/");
-}
-
 export default function App() {
   useSeoiCssLock();
   const { apiKey, paysyncEnabled: paySyncOn } = useLoaderData<typeof loader>();
@@ -77,137 +68,103 @@ export default function App() {
     paySyncOn &&
     (isPaySyncPath(pathname) ||
       (isSupportPath(pathname) && supportProductFromSearch(search) === "paysync"));
-  const onSeoWorkspace = isSeoWorkspacePath(pathname, search);
   const onPaySyncOnboarding =
     paySyncOn && pathname.startsWith("/app/paysync/onboarding");
-  const onHome = pathname === "/app" || pathname === "/app/";
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       {!onPaySyncOnboarding && (
         <s-app-nav>
-          {onHome ? (
-            <>
-              <s-link href={withEmbeddedSearch("/app", search, { product: null })}>
-                Home
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/seo-optimize", search, {
-                  product: null,
-                })}
-              >
-                SEO &amp; Image Optimization
-              </s-link>
-              {paySyncOn ? (
-                <s-link
-                  href={withEmbeddedSearch("/app/paysync", search, {
-                    product: null,
-                  })}
-                >
-                  PayPal and Razorpay Sync
-                </s-link>
-              ) : null}
-            </>
-          ) : null}
-
-          {onSeoWorkspace ? (
-            <>
-              <s-link
-                href={withEmbeddedSearch("/app/seo-optimize", search, {
-                  product: null,
-                })}
-              >
-                Home
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/seo-dashboard", search, {
-                  product: null,
-                })}
-              >
-                SEO Optimization
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/products", search, {
-                  product: null,
-                })}
-              >
-                Product Optimization
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/seo", search, { product: null })}
-              >
-                SEO Suite
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/manage", search, {
-                  product: null,
-                })}
-              >
-                Stock &amp; New Product
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/billing/plans", search, {
-                  product: null,
-                })}
-              >
-                Plans &amp; billing
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/support", search, {
-                  product: "seoi",
-                })}
-              >
-                Help &amp; support
-              </s-link>
-            </>
-          ) : null}
-
-          {onPaySync ? (
+          <s-link
+            href={withEmbeddedSearch("/app", search, { product: null })}
+            {...({ rel: "home" } as Record<string, string>)}
+          >
+            Home
+          </s-link>
+          <s-link
+            href={withEmbeddedSearch("/app/seo-optimize", search, {
+              product: null,
+            })}
+          >
+            {appNavLabel("AI SEO & Images")}
+          </s-link>
+          <s-link
+            href={withEmbeddedSearch("/app/seo-dashboard", search, {
+              product: null,
+            })}
+          >
+            {appNavLabel("AI SEO Optimization", 1)}
+          </s-link>
+          <s-link
+            href={withEmbeddedSearch("/app/products", search, {
+              product: null,
+            })}
+          >
+            {appNavLabel("Product Optimization", 2)}
+          </s-link>
+          <s-link href={withEmbeddedSearch("/app/seo", search, { product: null })}>
+            {appNavLabel("AI SEO Suite", 2)}
+          </s-link>
+          <s-link
+            href={withEmbeddedSearch("/app/manage", search, {
+              product: null,
+            })}
+          >
+            {appNavLabel("Stock & Products")}
+          </s-link>
+          {paySyncOn ? (
             <>
               <s-link
                 href={withEmbeddedSearch("/app/paysync", search, {
                   product: null,
                 })}
               >
-                Home
+                {appNavLabel("PaySync")}
               </s-link>
               <s-link
                 href={withEmbeddedSearch("/app/paysync/orders", search, {
                   product: null,
                 })}
               >
-                Orders
+                {appNavLabel("Orders", 1)}
               </s-link>
               <s-link
                 href={withEmbeddedSearch("/app/paysync/queue", search, {
                   product: null,
                 })}
               >
-                Sync queue
+                {appNavLabel("Sync queue", 1)}
               </s-link>
               <s-link
                 href={withEmbeddedSearch("/app/paysync/paypal", search, {
                   product: null,
                 })}
               >
-                Payment accounts
+                {appNavLabel("Payment accounts", 1)}
               </s-link>
               <s-link
                 href={withEmbeddedSearch("/app/paysync/settings", search, {
                   product: null,
                 })}
               >
-                Settings
-              </s-link>
-              <s-link
-                href={withEmbeddedSearch("/app/support", search, {
-                  product: "paysync",
-                })}
-              >
-                Help &amp; support
+                {appNavLabel("PaySync settings", 1)}
               </s-link>
             </>
           ) : null}
+          <s-link
+            href={withEmbeddedSearch("/app/billing/plans", search, {
+              product: null,
+            })}
+          >
+            {appNavLabel("Plans & billing")}
+          </s-link>
+          <s-link
+            href={withEmbeddedSearch("/app/support", search, {
+              product: paySyncOn && onPaySync ? "paysync" : "seoi",
+            })}
+          >
+            {appNavLabel("Help & support")}
+          </s-link>
         </s-app-nav>
       )}
       <main className="seoi-app-shell">

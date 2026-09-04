@@ -6,11 +6,18 @@ import { HomeButton } from "../HomeButton";
 
 const SEO_TOOLS = [
   {
-    title: "SEO Optimization",
+    title: "Bulk ALT text",
     description:
-      "Scan product SEO & images, fix missing ALT text, and apply AI suggestions.",
+      "Scan the catalog, generate AI ALT for all missing images, and apply to Shopify in one flow.",
     href: "/app/seo-dashboard",
-    cta: "Scan & Optimise SEO",
+    cta: "Open bulk ALT",
+  },
+  {
+    title: "AI SEO Optimization",
+    description:
+      "Scan product AI SEO & images, fix missing ALT text, and apply AI suggestions.",
+    href: "/app/seo-dashboard",
+    cta: "Scan & optimise AI SEO",
   },
   {
     title: "Product Optimization",
@@ -20,10 +27,10 @@ const SEO_TOOLS = [
     cta: "Write & Optimise Products",
   },
   {
-    title: "SEO Suite",
+    title: "AI SEO Suite",
     description: "IndexNow, redirects, sitemap, schema, speed, and more.",
     href: "/app/seo",
-    cta: "Open SEO Suite",
+    cta: "Open AI SEO Suite",
   },
   {
     title: "Stock & New Product",
@@ -52,11 +59,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function SeoOptimizeHub() {
   return (
-    <s-page heading="SEO & Image Optimization">
+    <s-page heading="AI SEO & Image Optimization">
       <HomeButton />
       <s-section>
         <p className="seoi-hub-intro">
-          All SEO, image, product, and inventory tools live in this workspace.
+          All AI SEO, image, product, and inventory tools live in this workspace.
         </p>
         <div className="seoi-tool-grid">
           {SEO_TOOLS.map((tool) => (

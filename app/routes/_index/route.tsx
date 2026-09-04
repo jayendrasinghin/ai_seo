@@ -76,7 +76,7 @@ export default function App() {
     <div className={styles.index}>
       <div className={styles.content}>
         <h1 className={styles.heading}>
-          Seoi — SEO{showPaySync ? " & PaySync" : ""}
+          {showPaySync ? "SEOi — AI SEO & PaySync" : "SEOi — AI SEO & Image Optimization"}
         </h1>
         <p className={styles.text}>
           {showPaySync
@@ -104,7 +104,7 @@ export default function App() {
         )}
         <ul className={styles.list}>
           <li>
-            <strong>SEO &amp; images</strong> — product copy, alt text, and SEO
+            <strong>AI SEO &amp; images</strong> — product copy, alt text, and AI SEO
             suite tools.
           </li>
           {showPaySync ? (
@@ -114,7 +114,7 @@ export default function App() {
             </li>
           ) : null}
           <li>
-            <strong>Tip</strong> — open from Shopify Admin → Apps → Seoi for the
+            <strong>Tip</strong> — open from Shopify Admin → Apps → SEOi for the
             embedded app. Or enter your{" "}
             <code>*.myshopify.com</code> domain below.
           </li>

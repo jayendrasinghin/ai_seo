@@ -20,7 +20,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 
 const PRODUCT_LABEL: Record<SupportProductKey, string> = {
-  seoi: "Seoi SEO",
+  seoi: "SEOi — AI SEO",
   paysync: "PaySync",
 };
 

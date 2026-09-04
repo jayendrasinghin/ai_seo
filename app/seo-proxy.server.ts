@@ -76,7 +76,7 @@ export async function handleSeoiProxyRequest(request: Request) {
   }
 
   if (suffix === "/") {
-    return new Response("Seoi SEO proxy is active.", {
+    return new Response("SEOi AI SEO proxy is active.", {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }

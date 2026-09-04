@@ -120,7 +120,7 @@ export async function ensureSupportApps(): Promise<void> {
   const defaults = [
     {
       slug: SUPPORT_PRODUCT_SLUGS.seoi,
-      name: "Seoi SEO",
+      name: "SEOi — AI SEO",
       description: "AI SEO & image optimization (seoi.in)",
       sortOrder: 1,
     },

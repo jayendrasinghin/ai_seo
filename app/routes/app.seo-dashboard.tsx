@@ -22,6 +22,93 @@ import { getEffectivePlan, planSeoUsesFreeQuota } from "../plan-helpers";
 import { isPartnerDevelopmentStore } from "../billing.server";
 
 const SHORT_ALT_MIN = 20;
+/** Max images processed per bulk generate/apply request (avoids timeouts). */
+const BULK_ALT_BATCH_LIMIT = 100;
+
+async function assertAiQuotaForBulk(
+  admin: AdminApiContext,
+  shop: string,
+  requestedCount: number,
+): Promise<
+  | { ok: true; usage: { freeQuotaLimit: number; aiSeoUsed: number; aiImageUsed: number; plan: string } }
+  | { ok: false; message: string }
+> {
+  const usage = await prisma.storeUsage.upsert({
+    where: { shop },
+    update: {},
+    create: { shop },
+  });
+  const partnerDevelopment = await isPartnerDevelopmentStore(admin);
+  const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
+  if (
+    !partnerDevelopment &&
+    planSeoUsesFreeQuota(getEffectivePlan(usage)) &&
+    totalAiUsed >= usage.freeQuotaLimit
+  ) {
+    return {
+      ok: false,
+      message:
+        "Free AI quota reached. Upgrade your plan to continue bulk AI alt-text actions.",
+    };
+  }
+  if (
+    !partnerDevelopment &&
+    planSeoUsesFreeQuota(getEffectivePlan(usage)) &&
+    totalAiUsed + requestedCount > usage.freeQuotaLimit
+  ) {
+    const remaining = Math.max(0, usage.freeQuotaLimit - totalAiUsed);
+    return {
+      ok: false,
+      message: `Free plan allows ${remaining} more AI action(s) this month. Select fewer rows or upgrade.`,
+    };
+  }
+  return {
+    ok: true,
+    usage: {
+      freeQuotaLimit: usage.freeQuotaLimit,
+      aiSeoUsed: usage.aiSeoUsed,
+      aiImageUsed: usage.aiImageUsed,
+      plan: getEffectivePlan(usage),
+    },
+  };
+}
+
+async function latestCompletedScanRun(shop: string) {
+  return prisma.imageScanRun.findFirst({
+    where: { shop, status: "completed" },
+    orderBy: { startedAt: "desc" },
+  });
+}
+
+async function bulkIssueIds(
+  shop: string,
+  scanRunId: string,
+  mode: "missing" | "all" | "ready_to_apply",
+  limit = BULK_ALT_BATCH_LIMIT,
+): Promise<string[]> {
+  const where =
+    mode === "missing"
+      ? {
+          shop,
+          scanRunId,
+          issueType: { in: ["MISSING_ALT", "SHORT_ALT"] },
+        }
+      : mode === "ready_to_apply"
+        ? {
+            shop,
+            scanRunId,
+            suggestedAlt: { not: null },
+          }
+        : { shop, scanRunId };
+
+  const rows = await prisma.imageSeoIssue.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
 
 /** Use product.media MediaImage ids — product.images ids are not valid for productUpdateMedia. */
 type ScanMediaImageNode = {
@@ -183,37 +270,69 @@ async function runImageSeoScan(admin: AdminApiContext, shop: string) {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
+  let handlerIntent = intent;
+  let selectedIds = formData
+    .getAll("issueIds")
+    .map((id) => String(id))
+    .filter(Boolean);
+
   const isAiMutation =
-    intent === "generate_alt_suggestions" || intent === "apply_alt_suggestions";
+    intent === "generate_alt_suggestions" ||
+    intent === "apply_alt_suggestions" ||
+    intent === "bulk_generate_missing_alt" ||
+    intent === "bulk_apply_all_alt";
 
   if (isAiMutation) {
     const { admin, session } = await authenticate.admin(request);
-    const usage = await prisma.storeUsage.upsert({
-      where: { shop: session.shop },
-      update: {},
-      create: { shop: session.shop },
-    });
-    const partnerDevelopment = await isPartnerDevelopmentStore(admin);
-    const totalAiUsed = usage.aiSeoUsed + usage.aiImageUsed;
-    if (
-      !partnerDevelopment &&
-      planSeoUsesFreeQuota(getEffectivePlan(usage)) &&
-      totalAiUsed >= usage.freeQuotaLimit
-    ) {
-      return {
-        status: "quota_exceeded" as const,
-        message:
-          "Free AI quota reached. Upgrade your plan to continue bulk AI alt-text actions.",
-      };
+
+    if (intent === "bulk_generate_missing_alt") {
+      const scan = await latestCompletedScanRun(session.shop);
+      if (!scan) {
+        return {
+          status: "bulk_skipped" as const,
+          message: "Run a scan first, then use bulk ALT.",
+        };
+      }
+      selectedIds = await bulkIssueIds(session.shop, scan.id, "missing");
+      if (selectedIds.length === 0) {
+        return {
+          status: "bulk_skipped" as const,
+          message: "No missing or short ALT issues to generate.",
+        };
+      }
+      handlerIntent = "generate_alt_suggestions";
+    }
+
+    if (intent === "bulk_apply_all_alt") {
+      const scan = await latestCompletedScanRun(session.shop);
+      if (!scan) {
+        return {
+          status: "bulk_skipped" as const,
+          message: "Run a scan first, then use bulk ALT.",
+        };
+      }
+      selectedIds = await bulkIssueIds(session.shop, scan.id, "all");
+      if (selectedIds.length === 0) {
+        return {
+          status: "bulk_skipped" as const,
+          message: "No open issues to apply.",
+        };
+      }
+      handlerIntent = "apply_alt_suggestions";
+    }
+
+    const quota = await assertAiQuotaForBulk(
+      admin,
+      session.shop,
+      selectedIds.length,
+    );
+    if (!quota.ok) {
+      return { status: "quota_exceeded" as const, message: quota.message };
     }
   }
 
-  if (intent === "generate_alt_suggestions") {
+  if (handlerIntent === "generate_alt_suggestions") {
     const { session } = await authenticate.admin(request);
-    const selectedIds = formData
-      .getAll("issueIds")
-      .map((id) => String(id))
-      .filter(Boolean);
 
     if (selectedIds.length === 0) {
       return { status: "suggestions_skipped" as const, message: "Select at least one row." };
@@ -247,15 +366,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
     }
 
-    return { status: "suggestions_generated" as const, updated };
+    return {
+      status: "suggestions_generated" as const,
+      updated,
+      bulk: intent === "bulk_generate_missing_alt",
+    };
   }
 
-  if (intent === "apply_alt_suggestions") {
+  if (handlerIntent === "apply_alt_suggestions") {
     const { admin, session } = await authenticate.admin(request);
-    const selectedIds = formData
-      .getAll("issueIds")
-      .map((id) => String(id))
-      .filter(Boolean);
 
     if (selectedIds.length === 0) {
       return {
@@ -393,6 +512,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       applied,
       failed,
       firstError,
+      bulk: intent === "bulk_apply_all_alt",
     };
   }
 
@@ -471,12 +591,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? { ...latestScanRun, issuesOpen: currentIssuesOpen }
     : null;
 
+  const bulkMissingCount = latestScanRun
+    ? await prisma.imageSeoIssue.count({
+        where: {
+          shop: session.shop,
+          scanRunId: latestScanRun.id,
+          issueType: { in: ["MISSING_ALT", "SHORT_ALT"] },
+        },
+      })
+    : 0;
+  const bulkApplyCount = currentIssuesOpen;
+
   return {
     stats: {
       productsScanned: currentScanRun?.productsScanned ?? 0,
       imagesMissingAlt: issueCounts.MISSING_ALT,
       aiSeoUsed: usage.aiSeoUsed,
       aiImageUsed: usage.aiImageUsed,
+    },
+    bulkAlt: {
+      missingCount: bulkMissingCount,
+      applyCount: Math.min(bulkApplyCount, BULK_ALT_BATCH_LIMIT),
+      batchLimit: BULK_ALT_BATCH_LIMIT,
+      hasScan: Boolean(latestScanRun),
     },
     usage: {
       aiUsed: usage.aiSeoUsed + usage.aiImageUsed,
@@ -492,8 +629,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function Index() {
-  const { stats, usage, latestScanRun, latestIssues, issueCounts, issueTypeFilter } =
-    useLoaderData<typeof loader>();
+  const {
+    stats,
+    usage,
+    latestScanRun,
+    latestIssues,
+    issueCounts,
+    issueTypeFilter,
+    bulkAlt,
+  } = useLoaderData<typeof loader>();
   const { search: embeddedSearch } = useLocation();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
@@ -504,10 +648,16 @@ export default function Index() {
     fetcher.state === "submitting" && fetcher.formData?.get("intent") === "scan_now";
   const isGeneratingSuggestions =
     fetcher.state === "submitting" &&
-    fetcher.formData?.get("intent") === "generate_alt_suggestions";
+    (fetcher.formData?.get("intent") === "generate_alt_suggestions" ||
+      fetcher.formData?.get("intent") === "bulk_generate_missing_alt");
   const isApplyingSuggestions =
     fetcher.state === "submitting" &&
-    fetcher.formData?.get("intent") === "apply_alt_suggestions";
+    (fetcher.formData?.get("intent") === "apply_alt_suggestions" ||
+      fetcher.formData?.get("intent") === "bulk_apply_all_alt");
+  const bulkQuotaBlocked =
+    !usage.partnerDevelopment &&
+    planSeoUsesFreeQuota(usage.plan) &&
+    usage.aiUsed >= usage.freeQuotaLimit;
   const imageHealthScore = latestScanRun?.imagesScanned
     ? Math.max(
         0,
@@ -547,7 +697,13 @@ export default function Index() {
     }
     if (fetcher.data.status === "suggestions_generated") {
       setActionMessage(
-        `Suggestions generated for ${fetcher.data.updated} issue(s). Your selection is kept — click Apply next.`,
+        `${
+          "bulk" in fetcher.data && fetcher.data.bulk ? "Bulk" : ""
+        } suggestions generated for ${fetcher.data.updated} image(s).${
+          "bulk" in fetcher.data && fetcher.data.bulk
+            ? " Click Apply all to Shopify next."
+            : " Your selection is kept — click Apply next."
+        }`,
       );
       revalidator.revalidate();
       return;
@@ -559,7 +715,12 @@ export default function Index() {
       revalidator.revalidate();
       return;
     }
-    if (fetcher.data.status === "scan_failed" || fetcher.data.status === "suggestions_skipped" || fetcher.data.status === "apply_skipped") {
+    if (
+      fetcher.data.status === "scan_failed" ||
+      fetcher.data.status === "suggestions_skipped" ||
+      fetcher.data.status === "apply_skipped" ||
+      fetcher.data.status === "bulk_skipped"
+    ) {
       setActionMessage(fetcher.data.message);
       return;
     }
@@ -571,15 +732,15 @@ export default function Index() {
 
   return (
     <div>
-      <s-page heading="SEO & Image Optimization">
+      <s-page heading="AI SEO & Image Optimization">
         <SeoHomeButton />
         <div className="seoi-page-hero">
           <div className="seoi-page-hero__content">
             <span className="seoi-eyebrow">AI-powered store optimization</span>
-            <h2>Find SEO issues. Fix them faster.</h2>
+            <h2>Bulk ALT text &amp; image SEO</h2>
             <p>
-              Scan product images, generate accessible ALT text, and monitor the
-              SEO work that improves storefront visibility.
+              Scan your catalog, generate AI ALT text in bulk, and publish fixes
+              to Shopify — up to {bulkAlt.batchLimit} images per batch.
             </p>
           </div>
           <span className="seoi-status">Store connected</span>
@@ -652,6 +813,101 @@ export default function Index() {
             </div>
           </section>
         </div>
+
+        <section className="seoi-section-card seoi-bulk-alt">
+          <div className="seoi-section-heading">
+            <div>
+              <h3>Bulk ALT text</h3>
+              <p>
+                Fix missing or short ALT across your latest scan — no need to
+                select rows one by one.
+              </p>
+            </div>
+            <span className="seoi-status">3 steps</span>
+          </div>
+          <ol className="seoi-billing-steps">
+            <li>
+              <strong>Analyze store</strong> — scans up to 50 products (10
+              images each).
+            </li>
+            <li>
+              <strong>Generate all missing ALT</strong> — AI writes ALT for
+              missing/short images
+              {bulkAlt.hasScan
+                ? ` (${Math.min(bulkAlt.missingCount, bulkAlt.batchLimit)} ready)`
+                : ""}
+              .
+            </li>
+            <li>
+              <strong>Apply all to Shopify</strong> — publishes ALT to product
+              media
+              {bulkAlt.hasScan
+                ? ` (up to ${bulkAlt.applyCount} open issues)`
+                : ""}
+              .
+            </li>
+          </ol>
+          <div className="seoi-billing-actions">
+            <button
+              className="seoi-nav-button seoi-nav-button--secondary"
+              type="button"
+              disabled={isScanning}
+              onClick={() =>
+                fetcher.submit({ intent: "scan_now" }, { method: "post" })
+              }
+            >
+              {isScanning ? "Scanning…" : "1. Analyze store"}
+            </button>
+            <button
+              className="seoi-nav-button seoi-nav-button--secondary"
+              type="button"
+              disabled={
+                !bulkAlt.hasScan ||
+                bulkAlt.missingCount === 0 ||
+                bulkQuotaBlocked ||
+                isGeneratingSuggestions ||
+                isApplyingSuggestions
+              }
+              onClick={() =>
+                fetcher.submit(
+                  { intent: "bulk_generate_missing_alt" },
+                  { method: "post" },
+                )
+              }
+            >
+              {isGeneratingSuggestions
+                ? "Generating…"
+                : `2. Generate all missing ALT (${Math.min(bulkAlt.missingCount, bulkAlt.batchLimit)})`}
+            </button>
+            <button
+              className="seoi-nav-button seoi-nav-button--primary"
+              type="button"
+              disabled={
+                !bulkAlt.hasScan ||
+                bulkAlt.applyCount === 0 ||
+                bulkQuotaBlocked ||
+                isGeneratingSuggestions ||
+                isApplyingSuggestions
+              }
+              onClick={() =>
+                fetcher.submit(
+                  { intent: "bulk_apply_all_alt" },
+                  { method: "post" },
+                )
+              }
+            >
+              {isApplyingSuggestions
+                ? "Applying…"
+                : `3. Apply all to Shopify (${bulkAlt.applyCount})`}
+            </button>
+          </div>
+          {bulkQuotaBlocked ? (
+            <p className="seoi-plan-card__note">
+              Free AI quota reached — upgrade in Plans &amp; billing to continue
+              bulk ALT.
+            </p>
+          ) : null}
+        </section>
 
         <div className="seoi-stat-grid">
           {[

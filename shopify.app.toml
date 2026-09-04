@@ -3,7 +3,7 @@
 handle = "ai-product-descriptions-seo"
 
 client_id = "3b46a7d5b955f46d2298724437e64a02"
-name = "Seoi — SEO & Images"
+name = "SEOi — AI SEO & PaySync"
 # /app is the embedded home — opening bare / shows the public shop-domain form.
 application_url = "https://seoi.in/app"
 embedded = true

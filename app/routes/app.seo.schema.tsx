@@ -111,7 +111,7 @@ export default function SchemaPage() {
             3. <strong>App embeds</strong> (puzzle / apps icon) ← click this one instead
           </s-text>
           <s-text>
-            Then search for <strong>Seoi Product JSON-LD</strong>, toggle it ON, and Save.
+            Then search for <strong>SEOi Product JSON-LD</strong>, toggle it ON, and Save.
           </s-text>
           <s-text>
             Keep <strong>shopify app dev</strong> running while testing locally.
@@ -124,7 +124,7 @@ export default function SchemaPage() {
             Control + 3 (see Shopify theme editor shortcuts).
           </s-text>
           <s-text tone="neutral">
-            If App embeds opens but Seoi is missing: the theme extension did not install on the
+            If App embeds opens but SEOi is missing: the theme extension did not install on the
             store yet — restart <code>shopify app dev</code>, open the preview again, then refresh
             the theme editor.
           </s-text>
