@@ -560,10 +560,18 @@ body {
   color: inherit;
   background: #fff;
   text-decoration: none;
+  cursor: pointer;
+  pointer-events: auto;
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
     transform 150ms ease;
+}
+
+.seoi-product-row button,
+.seoi-product-list button {
+  cursor: pointer !important;
+  pointer-events: auto !important;
 }
 
 .seoi-product-row:hover {

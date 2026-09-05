@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useLocation, useNavigate } from "react-router";
-import { EmbeddedNavLink } from "../embedded-nav-link";
 import { SeoHomeButton } from "../HomeButton";
 import { withEmbeddedSearch } from "../embedded-nav";
 import { productPathSegmentFromGid } from "../shopify-ids";
@@ -359,8 +358,38 @@ export default function ProductsListPage() {
                   firstMediaImage?.altText ||
                   product.title;
 
+                const productHref = withEmbeddedSearch(
+                  `/app/products/${pathSeg}`,
+                  location.search,
+                  { after: null, before: null },
+                );
+
+                const openProduct = () => {
+                  const qIndex = productHref.indexOf("?");
+                  if (qIndex === -1) {
+                    navigate(productHref);
+                  } else {
+                    navigate({
+                      pathname: productHref.slice(0, qIndex),
+                      search: productHref.slice(qIndex),
+                    });
+                  }
+                };
+
                 return (
-                  <article className="seoi-product-row" key={product.id}>
+                  <article
+                    className="seoi-product-row"
+                    key={product.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={openProduct}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openProduct();
+                      }
+                    }}
+                  >
                       <div className="seoi-product-row__image">
                         {thumbUrl ? (
                           <img
@@ -372,13 +401,9 @@ export default function ProductsListPage() {
                         )}
                       </div>
                       <div className="seoi-product-row__content">
-                        <EmbeddedNavLink
-                          hrefPathname={`/app/products/${pathSeg}`}
-                          className="seoi-product-row__title"
-                          style={{ textDecoration: "none", color: "inherit" }}
-                        >
+                        <span className="seoi-product-row__title">
                           {product.title}
-                        </EmbeddedNavLink>
+                        </span>
                         <div className="seoi-product-row__meta">
                           <span className="seoi-badge">{product.status}</span>
                         </div>

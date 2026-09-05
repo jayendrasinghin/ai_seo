@@ -36,6 +36,8 @@ const variantStyles: Record<NonNullable<EmbeddedNavLinkProps["variant"]>, CSSPro
     color: "#4f46e5",
     textDecoration: "none",
     fontWeight: 600,
+    cursor: "pointer",
+    pointerEvents: "auto",
   },
   button: {
     display: "inline-flex",
@@ -114,7 +116,15 @@ export function EmbeddedNavLink({
     if (e.altKey || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    navigate(fullHref);
+    const qIndex = fullHref.indexOf("?");
+    if (qIndex === -1) {
+      navigate(fullHref);
+    } else {
+      navigate({
+        pathname: fullHref.slice(0, qIndex),
+        search: fullHref.slice(qIndex),
+      });
+    }
   }
 
   return (
