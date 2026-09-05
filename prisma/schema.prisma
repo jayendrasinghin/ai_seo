@@ -570,3 +570,38 @@ model SyncAttempt {
 
   @@index([shipmentSyncId, createdAt])
 }
+
+/// Stock receive / set log (invoice + locations) from Stock & new product.
+model InventoryReceipt {
+  id              String    @id @default(cuid())
+  shop            String
+  productId       String
+  variantId       String
+  inventoryItemId String
+  /// receive = add qty · set = absolute available
+  mode            String
+  quantity        Int
+  locationIds     String[]
+  invoiceNumber   String?
+  invoiceDate     DateTime?
+  referenceUri    String?
+  previousPrice   String?
+  newPrice        String?
+  createdAt       DateTime  @default(now())
+
+  @@index([shop, variantId, createdAt(sort: Desc)])
+}
+
+/// Variant selling price changes logged by the app.
+model VariantPriceChange {
+  id            String   @id @default(cuid())
+  shop          String
+  productId     String
+  variantId     String
+  oldPrice      String
+  newPrice      String
+  invoiceNumber String?
+  createdAt     DateTime @default(now())
+
+  @@index([shop, variantId, createdAt(sort: Desc)])
+}

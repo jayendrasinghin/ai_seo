@@ -10,6 +10,16 @@ import { SeoHomeButton } from "../HomeButton";
 import { productPathSegmentFromGid } from "../shopify-ids";
 import { applyAvailableQuantityToAllLocations } from "../inventory-locations.server";
 import {
+  applyInventoryAtLocations,
+  buildInvoiceReferenceUri,
+  updateVariantPrice,
+} from "../inventory-receive.server";
+import {
+  getVariantInventoryHistory,
+  logInventoryReceipt,
+  logVariantPriceChange,
+} from "../inventory-history.server";
+import {
   clearResolvedLowStock,
   getInventoryAlertSettings,
   notifyLowStockLines,
@@ -31,7 +41,7 @@ function useDebouncedValue<T>(value: T, ms: number): T {
 
 function managePathWithParams(
   locationSearch: string,
-  opts: { q?: string; cursor?: string | null },
+  opts: { q?: string; cursor?: string | null; variant?: string | null },
 ): string {
   const p = new URLSearchParams(
     locationSearch.startsWith("?") ? locationSearch.slice(1) : locationSearch,
@@ -40,8 +50,15 @@ function managePathWithParams(
   if (t) p.set("q", t);
   else p.delete("q");
 
-  if (opts.cursor) p.set("cursor", opts.cursor);
-  else p.delete("cursor");
+  if (opts.cursor !== undefined) {
+    if (opts.cursor) p.set("cursor", opts.cursor);
+    else p.delete("cursor");
+  }
+
+  if (opts.variant !== undefined) {
+    if (opts.variant) p.set("variant", opts.variant);
+    else p.delete("variant");
+  }
 
   const qs = p.toString();
   return qs.length > 0 ? `/app/manage?${qs}` : "/app/manage";
@@ -55,6 +72,7 @@ type ManageVariant = {
   id: string;
   label: string;
   sku: string | null;
+  price: string | null;
   inventoryItemId: string | null;
   levels: Array<{
     locationId: string;
@@ -98,6 +116,7 @@ function parseProductsFromResponse(data: unknown): {
             title?: string | null;
             displayName?: string | null;
             sku?: string | null;
+            price?: string | null;
             inventoryItem?: {
               id: string;
               inventoryLevels?: {
@@ -156,6 +175,7 @@ function parseProductsFromResponse(data: unknown): {
           id: v.id,
           label,
           sku: v.sku?.trim() || null,
+          price: v.price?.trim() || null,
           inventoryItemId: item?.id ?? null,
           levels,
         };
@@ -225,6 +245,7 @@ const manageProductsQuery = `#graphql
             title
             displayName
             sku
+            price
             inventoryItem {
               id
               inventoryLevels(first: 25) {
@@ -252,6 +273,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const productSearch = url.searchParams.get("q")?.trim() ?? "";
   const cursor = url.searchParams.get("cursor")?.trim() || null;
+  const variantParam = url.searchParams.get("variant")?.trim() || null;
 
   const [locRes, prodRes, shopRes, alertSettings] = await Promise.all([
     admin.graphql(
@@ -317,6 +339,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         "",
       lowStockCount: 0,
       alertMailResult: null as { sent: number; skipped: number } | null,
+      variantHistory: null as Awaited<
+        ReturnType<typeof getVariantInventoryHistory>
+      > | null,
+      variantParam,
     };
   }
 
@@ -339,6 +365,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     alertMailResult = await notifyLowStockLines(session.shop, lowStockLines);
   }
 
+  const variantHistory = variantParam
+    ? await getVariantInventoryHistory(session.shop, variantParam)
+    : null;
+
   return {
     error: null as string | null,
     locations,
@@ -355,6 +385,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shopJson.data?.shop?.contactEmail || shopJson.data?.shop?.email || "",
     lowStockCount: lowStockLines.length,
     alertMailResult,
+    variantHistory,
+    variantParam,
   };
 };
 
@@ -420,83 +452,174 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
-  if (intent === "set_quantity") {
+  if (intent === "receive_stock") {
     const inventoryItemId = String(formData.get("inventoryItemId") || "");
-    const newQtyRaw = formData.get("newQuantity");
-    const newQuantity =
-      typeof newQtyRaw === "string" ? Number.parseInt(newQtyRaw, 10) : NaN;
+    const productId = String(formData.get("productId") || "");
+    const variantId = String(formData.get("variantId") || "");
+    const modeRaw = String(formData.get("mode") || "receive");
+    const mode = modeRaw === "set" ? ("set" as const) : ("receive" as const);
+    const qtyRaw = formData.get("quantity");
+    const quantity =
+      typeof qtyRaw === "string" ? Number.parseInt(qtyRaw, 10) : NaN;
     const productTitle = String(formData.get("productTitle") || "Product");
     const variantLabel = String(formData.get("variantLabel") || "Variant");
+    const currentPrice = String(formData.get("currentPrice") || "").trim();
+    const newPriceRaw = String(formData.get("newPrice") || "").trim();
+    const invoiceNumber = String(formData.get("invoiceNumber") || "").trim();
+    const invoiceDateRaw = String(formData.get("invoiceDate") || "").trim();
+    const locationIds = formData
+      .getAll("locationIds")
+      .map(String)
+      .filter(Boolean);
 
-    if (!inventoryItemId || Number.isNaN(newQuantity)) {
+    if (
+      !inventoryItemId ||
+      !productId ||
+      !variantId ||
+      Number.isNaN(quantity)
+    ) {
       return {
         status: "error" as const,
-        intent: "set_quantity" as const,
-        message: "Choose a variant and enter a valid quantity.",
-      };
-    }
-    if (newQuantity < 0) {
-      return {
-        status: "error" as const,
-        intent: "set_quantity" as const,
-        message: "Quantity cannot be negative.",
+        intent: "receive_stock" as const,
+        message: "Choose a variant, locations, and enter a valid quantity.",
       };
     }
 
-    const invResult = await applyAvailableQuantityToAllLocations(
+    const referenceUri = invoiceNumber
+      ? buildInvoiceReferenceUri(invoiceNumber)
+      : undefined;
+
+    const invResult = await applyInventoryAtLocations(
       admin,
       inventoryItemId,
-      newQuantity,
+      locationIds,
+      mode,
+      quantity,
+      referenceUri,
     );
     if (!invResult.ok) {
       return {
         status: "error" as const,
-        intent: "set_quantity" as const,
+        intent: "receive_stock" as const,
         message: invResult.message,
       };
     }
-    if (invResult.locationsAdjusted === 0) {
+
+    let priceUpdated = false;
+    if (newPriceRaw && newPriceRaw !== currentPrice) {
+      const priceResult = await updateVariantPrice(
+        admin,
+        productId,
+        variantId,
+        newPriceRaw,
+      );
+      if (!priceResult.ok) {
+        return {
+          status: "error" as const,
+          intent: "receive_stock" as const,
+          message: `Stock updated but price failed: ${priceResult.message}`,
+        };
+      }
+      await logVariantPriceChange({
+        shop: session.shop,
+        productId,
+        variantId,
+        oldPrice: currentPrice || newPriceRaw,
+        newPrice: newPriceRaw,
+        invoiceNumber: invoiceNumber || null,
+      });
+      priceUpdated = true;
+    }
+
+    const invoiceDate = invoiceDateRaw ? new Date(invoiceDateRaw) : null;
+    await logInventoryReceipt({
+      shop: session.shop,
+      productId,
+      variantId,
+      inventoryItemId,
+      mode,
+      quantity,
+      locationIds,
+      invoiceNumber: invoiceNumber || null,
+      invoiceDate:
+        invoiceDate && !Number.isNaN(invoiceDate.getTime()) ? invoiceDate : null,
+      referenceUri: referenceUri ?? null,
+      previousPrice: currentPrice || null,
+      newPrice: priceUpdated ? newPriceRaw : null,
+    });
+
+    if (invResult.locationsAdjusted === 0 && !priceUpdated) {
       return {
         status: "quantity_unchanged" as const,
-        intent: "set_quantity" as const,
+        intent: "receive_stock" as const,
       };
     }
 
-    await clearResolvedLowStock(session.shop, inventoryItemId, newQuantity);
-
     let alertSent = 0;
-    if (newQuantity < LOW_STOCK_THRESHOLD) {
-      const locRes = await admin.graphql(
+    if (invResult.locationsAdjusted > 0 && locationIds.length > 0) {
+      const levelsRes = await admin.graphql(
         `#graphql
-          query ManageActiveLocationsForAlert {
-            locations(first: 25, sortKey: NAME) {
-              nodes { id name isActive }
+          query PostChangeLevels($id: ID!) {
+            inventoryItem(id: $id) {
+              inventoryLevels(first: 25) {
+                nodes {
+                  location { id name }
+                  quantities(names: ["available"]) {
+                    name
+                    quantity
+                  }
+                }
+              }
             }
           }`,
+        { variables: { id: inventoryItemId } },
       );
-      const locJson = (await locRes.json()) as {
-        data?: { locations?: { nodes?: ManageLocation[] } };
+      const levelsJson = (await levelsRes.json()) as {
+        data?: {
+          inventoryItem?: {
+            inventoryLevels?: {
+              nodes?: Array<{
+                location?: { id: string; name: string } | null;
+                quantities?: Array<{ name?: string; quantity?: number }>;
+              }>;
+            };
+          };
+        };
       };
-      const active = (locJson.data?.locations?.nodes ?? []).filter(
-        (l) => l.isActive,
-      );
-      const lines: LowStockLine[] = active.map((loc) => ({
-        inventoryItemId,
-        locationId: loc.id,
-        productTitle,
-        variantLabel,
-        locationName: loc.name,
-        quantity: newQuantity,
-      }));
-      const mail = await notifyLowStockLines(session.shop, lines);
-      alertSent = mail.sent;
+      const lowLines: LowStockLine[] = [];
+      for (const n of levelsJson.data?.inventoryItem?.inventoryLevels?.nodes ??
+        []) {
+        const locId = n.location?.id;
+        if (!locId || !locationIds.includes(locId)) continue;
+        const entry = (n.quantities ?? []).find((q) => q.name === "available");
+        const qty =
+          typeof entry?.quantity === "number" ? entry.quantity : 0;
+        if (qty < LOW_STOCK_THRESHOLD) {
+          lowLines.push({
+            inventoryItemId,
+            locationId: locId,
+            productTitle,
+            variantLabel,
+            locationName: n.location?.name ?? "Location",
+            quantity: qty,
+          });
+        }
+      }
+      if (lowLines.length > 0) {
+        const mail = await notifyLowStockLines(session.shop, lowLines);
+        alertSent = mail.sent;
+      } else {
+        await clearResolvedLowStock(session.shop, inventoryItemId, LOW_STOCK_THRESHOLD);
+      }
     }
 
     return {
-      status: "quantity_updated" as const,
-      intent: "set_quantity" as const,
-      newQuantity,
+      status: "stock_updated" as const,
+      intent: "receive_stock" as const,
+      mode,
+      quantity,
       locationsAdjusted: invResult.locationsAdjusted,
+      priceUpdated,
       alertSent,
     };
   }
@@ -892,11 +1015,30 @@ export default function ManagePage() {
 
   const { error, locations, products, productSearch, pageInfo, cursor, alertSettings, shopEmailHint, lowStockCount, alertMailResult } =
     display;
+  const { variantHistory, variantParam } = loaderData;
 
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
+  const [stockMode, setStockMode] = useState<"receive" | "set">("receive");
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const createImagesRef = useRef<HTMLInputElement>(null);
   const [createImageCount, setCreateImageCount] = useState(0);
+
+  const syncVariantInUrl = (vid: string) => {
+    navigate(managePathWithParams(location.search, { variant: vid || null }));
+  };
+
+  useEffect(() => {
+    if (!variantParam) return;
+    for (const product of products) {
+      const variant = product.variants.find((v) => v.id === variantParam);
+      if (variant) {
+        setProductId(product.id);
+        setVariantId(variant.id);
+        break;
+      }
+    }
+  }, [variantParam, products]);
 
   useEffect(() => {
     if (searchingLive) return;
@@ -923,6 +1065,7 @@ export default function ManagePage() {
   const selectForStock = (pid: string, vid: string) => {
     setProductId(pid);
     setVariantId(vid);
+    syncVariantInUrl(vid);
     requestAnimationFrame(() => {
       document
         .getElementById("set-quantity-section")
@@ -939,6 +1082,7 @@ export default function ManagePage() {
       "";
     setProductId(pid);
     setVariantId(vid);
+    syncVariantInUrl(vid);
     requestAnimationFrame(() => {
       document
         .getElementById("set-quantity-section")
@@ -971,10 +1115,16 @@ export default function ManagePage() {
     });
   }, [locations, selectedVariant]);
 
-  const defaultQuantityInput =
-    locationRows.find((r) => r.hasLevel)?.available ??
-    locationRows[0]?.available ??
-    0;
+  useEffect(() => {
+    if (!selectedVariant?.inventoryItemId) {
+      setSelectedLocationIds([]);
+      return;
+    }
+    setSelectedLocationIds(locations.map((l) => l.id));
+  }, [selectedVariant?.id, selectedVariant?.inventoryItemId, locations]);
+
+  const activeVariantHistory =
+    selectedVariant?.id === variantParam ? variantHistory : null;
 
   const inventoryRows = useMemo(() => {
     const rows: Array<{
@@ -1376,12 +1526,13 @@ export default function ManagePage() {
         </s-section>
 
         <div id="set-quantity-section">
-        <s-section heading="Set available quantity">
+        <s-section heading="Receive stock &amp; update price">
           <s-stack direction="block" gap="base">
             <s-text tone="neutral">
-              Update <strong>one variant</strong> at a time. Saving sets that
-              quantity at <strong>all</strong> active locations. Click a row in
-              the inventory table above to select product and variant.
+              Update <strong>one variant</strong> at a time. Choose locations,
+              receive stock or set an absolute quantity, optionally record an
+              invoice and update price. Click a row in the inventory table above
+              to pre-select product and variant.
             </s-text>
 
             <div
@@ -1448,6 +1599,7 @@ export default function ManagePage() {
                   onChange={(e) => {
                     setProductId(e.target.value);
                     setVariantId("");
+                    syncVariantInUrl("");
                   }}
                 >
                   <option value="">Select a product</option>
@@ -1473,7 +1625,9 @@ export default function ManagePage() {
                   }}
                   value={variantId}
                   onChange={(e) => {
-                    setVariantId(e.target.value);
+                    const vid = e.target.value;
+                    setVariantId(vid);
+                    syncVariantInUrl(vid);
                   }}
                 >
                   <option value="">Select a variant</option>
@@ -1488,62 +1642,15 @@ export default function ManagePage() {
             ) : null}
 
             {selectedVariant?.inventoryItemId && locationRows.length > 0 ? (
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    borderCollapse: "collapse",
-                    width: "100%",
-                    maxWidth: "36rem",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #c9cccf" }}>
-                      <th style={{ textAlign: "left", padding: "0.35rem 0.5rem" }}>
-                        Location
-                      </th>
-                      <th style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>
-                        Available now
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {locationRows.map((row) => (
-                      <tr key={row.locationId} style={{ borderBottom: "1px solid #e3e5e7" }}>
-                        <td style={{ padding: "0.35rem 0.5rem" }}>
-                          {row.locationName}
-                        </td>
-                        <td style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>
-                          {row.hasLevel ? (
-                            <span style={stockBadgeStyle(row.available)}>
-                              {row.available}
-                            </span>
-                          ) : (
-                            "Not stocked yet"
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-
-            {selectedVariant && !selectedVariant.inventoryItemId ? (
-            <s-text tone="neutral">
-              This variant has no inventory item (often digital or custom
-                setup). Use Shopify Admin to enable inventory tracking.
-              </s-text>
-            ) : null}
-
-            {selectedVariant?.inventoryItemId && locationRows.length > 0 ? (
               <fetcher.Form method="post">
-                <input type="hidden" name="intent" value="set_quantity" />
+                <input type="hidden" name="intent" value="receive_stock" />
                 <input
                   type="hidden"
                   name="inventoryItemId"
                   value={selectedVariant.inventoryItemId}
                 />
+                <input type="hidden" name="productId" value={selectedProduct?.id || ""} />
+                <input type="hidden" name="variantId" value={selectedVariant.id} />
                 <input
                   type="hidden"
                   name="productTitle"
@@ -1554,16 +1661,116 @@ export default function ManagePage() {
                   name="variantLabel"
                   value={selectedVariant.label}
                 />
-                <label style={{ display: "block" }}>
+                <input
+                  type="hidden"
+                  name="currentPrice"
+                  value={selectedVariant.price || ""}
+                />
+                <input type="hidden" name="mode" value={stockMode} />
+
+                <div style={{ overflowX: "auto", marginBottom: "0.75rem" }}>
+                  <table
+                    style={{
+                      borderCollapse: "collapse",
+                      width: "100%",
+                      maxWidth: "40rem",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #c9cccf" }}>
+                        <th style={{ textAlign: "left", padding: "0.35rem 0.5rem" }}>
+                          Apply
+                        </th>
+                        <th style={{ textAlign: "left", padding: "0.35rem 0.5rem" }}>
+                          Location
+                        </th>
+                        <th style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>
+                          Available now
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {locationRows.map((row) => {
+                        const checked = selectedLocationIds.includes(row.locationId);
+                        return (
+                          <tr
+                            key={row.locationId}
+                            style={{ borderBottom: "1px solid #e3e5e7" }}
+                          >
+                            <td style={{ padding: "0.35rem 0.5rem" }}>
+                              <input
+                                type="checkbox"
+                                name="locationIds"
+                                value={row.locationId}
+                                checked={checked}
+                                onChange={(e) => {
+                                  setSelectedLocationIds((prev) =>
+                                    e.target.checked
+                                      ? [...prev, row.locationId]
+                                      : prev.filter((id) => id !== row.locationId),
+                                  );
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: "0.35rem 0.5rem" }}>
+                              {row.locationName}
+                            </td>
+                            <td style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>
+                              {row.hasLevel ? (
+                                <span style={stockBadgeStyle(row.available)}>
+                                  {row.available}
+                                </span>
+                              ) : (
+                                "Not stocked yet"
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    <input
+                      type="radio"
+                      name="modeUi"
+                      checked={stockMode === "receive"}
+                      onChange={() => setStockMode("receive")}
+                    />
+                    <s-text>Receive (+ quantity)</s-text>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    <input
+                      type="radio"
+                      name="modeUi"
+                      checked={stockMode === "set"}
+                      onChange={() => setStockMode("set")}
+                    />
+                    <s-text>Set absolute quantity</s-text>
+                  </label>
+                </div>
+
+                <label style={{ display: "block", marginBottom: "0.75rem" }}>
                   <s-text font-weight="bold">
-                    New available quantity (each active location)
+                    {stockMode === "receive" ? "Quantity to receive" : "New available quantity"}
                   </s-text>
                   <input
-                    key={variantId}
+                    key={`${variantId}-${stockMode}`}
                     type="number"
-                    name="newQuantity"
+                    name="quantity"
                     min={0}
-                    defaultValue={defaultQuantityInput}
+                    defaultValue={stockMode === "set" ? (locationRows.find((r) => r.hasLevel)?.available ?? 0) : 0}
+                    required
                     style={{
                       display: "block",
                       width: "100%",
@@ -1573,19 +1780,146 @@ export default function ManagePage() {
                     }}
                   />
                 </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <label style={{ display: "block" }}>
+                    <s-text font-weight="bold">Invoice number (optional)</s-text>
+                    <input
+                      type="text"
+                      name="invoiceNumber"
+                      placeholder="INV-2026-001"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        minWidth: "10rem",
+                        maxWidth: "16rem",
+                        marginTop: "0.35rem",
+                        padding: "0.5rem",
+                      }}
+                    />
+                  </label>
+                  <label style={{ display: "block" }}>
+                    <s-text font-weight="bold">Invoice date (optional)</s-text>
+                    <input
+                      type="date"
+                      name="invoiceDate"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        minWidth: "10rem",
+                        maxWidth: "16rem",
+                        marginTop: "0.35rem",
+                        padding: "0.5rem",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                    alignItems: "flex-end",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <div>
+                    <s-text font-weight="bold">Current price</s-text>
+                    <div style={{ marginTop: "0.35rem", fontSize: "0.9375rem" }}>
+                      {selectedVariant.price ? (
+                        <span>{selectedVariant.price}</span>
+                      ) : (
+                        <span style={{ color: "#6d7175" }}>Not set</span>
+                      )}
+                    </div>
+                  </div>
+                  <label style={{ display: "block" }}>
+                    <s-text font-weight="bold">New price (optional)</s-text>
+                    <input
+                      type="text"
+                      name="newPrice"
+                      placeholder={selectedVariant.price || "0.00"}
+                      defaultValue={selectedVariant.price || ""}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        minWidth: "8rem",
+                        maxWidth: "12rem",
+                        marginTop: "0.35rem",
+                        padding: "0.5rem",
+                      }}
+                    />
+                  </label>
+                </div>
+
                 <div style={{ marginTop: "0.75rem" }}>
                   <s-button
                     type="submit"
                     variant="primary"
+                    disabled={selectedLocationIds.length === 0}
                     {...(fetcher.state === "submitting" &&
-                    fetcher.formData?.get("intent") === "set_quantity"
+                    fetcher.formData?.get("intent") === "receive_stock"
                       ? { loading: true }
                       : {})}
                   >
-                    Update all locations
+                    {stockMode === "receive" ? "Receive stock" : "Set stock"}
                   </s-button>
                 </div>
               </fetcher.Form>
+            ) : null}
+
+            {activeVariantHistory &&
+            (activeVariantHistory.receipts.length > 0 ||
+              activeVariantHistory.priceChanges.length > 0) ? (
+              <div style={{ marginTop: "1rem" }}>
+                <s-text font-weight="bold">Recent history</s-text>
+                {activeVariantHistory.receipts.length > 0 ? (
+                  <ul style={{ margin: "0.5rem 0", paddingLeft: "1.25rem", fontSize: "0.875rem" }}>
+                    {activeVariantHistory.receipts.map((r) => (
+                      <li key={r.id}>
+                        {r.mode === "receive" ? "Received" : "Set"}{" "}
+                        <strong>{r.quantity}</strong>
+                        {r.invoiceNumber ? ` · Invoice ${r.invoiceNumber}` : ""}
+                        {r.invoiceDate
+                          ? ` · ${new Date(r.invoiceDate).toLocaleDateString()}`
+                          : ""}
+                        {r.previousPrice && r.newPrice
+                          ? ` · Price ${r.previousPrice} → ${r.newPrice}`
+                          : ""}
+                        {" · "}
+                        {new Date(r.createdAt).toLocaleString()}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {activeVariantHistory.priceChanges.length > 0 ? (
+                  <ul style={{ margin: "0.5rem 0", paddingLeft: "1.25rem", fontSize: "0.875rem" }}>
+                    {activeVariantHistory.priceChanges.map((p) => (
+                      <li key={p.id}>
+                        Price <strong>{p.oldPrice}</strong> → <strong>{p.newPrice}</strong>
+                        {p.invoiceNumber ? ` · Invoice ${p.invoiceNumber}` : ""}
+                        {" · "}
+                        {new Date(p.createdAt).toLocaleString()}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            {selectedVariant && !selectedVariant.inventoryItemId ? (
+              <s-text tone="neutral">
+                This variant has no inventory item (often digital or custom
+                setup). Use Shopify Admin to enable inventory tracking.
+              </s-text>
             ) : null}
 
             {selectedVariant?.inventoryItemId && locations.length === 0 ? (
@@ -1595,22 +1929,24 @@ export default function ManagePage() {
               </s-text>
             ) : null}
 
-            {fetcher.data?.status === "quantity_updated" &&
-            fetcher.data.intent === "set_quantity" ? (
+            {fetcher.data?.status === "stock_updated" &&
+            fetcher.data.intent === "receive_stock" ? (
               <s-text tone="success">
-                Set available to {fetcher.data.newQuantity} at{" "}
-                {fetcher.data.locationsAdjusted} active location
-                {fetcher.data.locationsAdjusted === 1 ? "" : "s"}.
+                {fetcher.data.mode === "receive"
+                  ? `Received ${fetcher.data.quantity} at ${fetcher.data.locationsAdjusted} location(s).`
+                  : `Set quantity to ${fetcher.data.quantity} at ${fetcher.data.locationsAdjusted} location(s).`}
+                {fetcher.data.priceUpdated ? " Price updated." : ""}
                 {"alertSent" in fetcher.data && fetcher.data.alertSent > 0
                   ? ` Low-stock email sent (${fetcher.data.alertSent}).`
                   : ""}
               </s-text>
             ) : null}
-            {fetcher.data?.status === "quantity_unchanged" ? (
-              <s-text tone="neutral">Quantity already matched — no change.</s-text>
+            {fetcher.data?.status === "quantity_unchanged" &&
+            fetcher.data.intent === "receive_stock" ? (
+              <s-text tone="neutral">No stock or price change needed.</s-text>
             ) : null}
             {fetcher.data?.status === "error" &&
-            fetcher.data.intent === "set_quantity" ? (
+            fetcher.data.intent === "receive_stock" ? (
               <s-text tone="critical">{fetcher.data.message}</s-text>
             ) : null}
           </s-stack>
