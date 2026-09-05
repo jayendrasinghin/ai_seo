@@ -89,21 +89,14 @@ export default function App() {
             {appNavLabel("AI SEO & Images")}
           </s-link>
           <s-link
-            href={withEmbeddedSearch("/app/seo-dashboard", search, {
-              product: null,
-            })}
-          >
-            {appNavLabel("AI SEO Optimization", 1)}
-          </s-link>
-          <s-link
             href={withEmbeddedSearch("/app/products", search, {
               product: null,
             })}
           >
-            {appNavLabel("Product Optimization", 2)}
+            {appNavLabel("Product Optimization", 1)}
           </s-link>
           <s-link href={withEmbeddedSearch("/app/seo", search, { product: null })}>
-            {appNavLabel("AI SEO Suite", 2)}
+            {appNavLabel("AI SEO Suite", 1)}
           </s-link>
           <s-link
             href={withEmbeddedSearch("/app/manage", search, {

@@ -6,18 +6,11 @@ import { HomeButton } from "../HomeButton";
 
 const SEO_TOOLS = [
   {
-    title: "Bulk ALT text",
+    title: "Image SEO & ALT text",
     description:
-      "Scan the catalog, generate AI ALT for all missing images, and apply to Shopify in one flow.",
+      "Scan the catalog for missing or weak ALT text, generate AI suggestions in bulk, and apply to Shopify in one flow.",
     href: "/app/seo-dashboard",
-    cta: "Open bulk ALT",
-  },
-  {
-    title: "AI SEO Optimization",
-    description:
-      "Scan product AI SEO & images, fix missing ALT text, and apply AI suggestions.",
-    href: "/app/seo-dashboard",
-    cta: "Scan & optimise AI SEO",
+    cta: "Scan & optimize images",
   },
   {
     title: "Product Optimization",
@@ -67,7 +60,7 @@ export default function SeoOptimizeHub() {
         </p>
         <div className="seoi-tool-grid">
           {SEO_TOOLS.map((tool) => (
-            <article key={tool.href} className="seoi-tool-card">
+            <article key={tool.title} className="seoi-tool-card">
               <h3>{tool.title}</h3>
               <p>{tool.description}</p>
               <EmbeddedNavLink hrefPathname={tool.href} variant="button">
