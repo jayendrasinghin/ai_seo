@@ -4,7 +4,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher, useLoaderData, useLocation, useNavigate } from "react-router";
+import { useFetcher, useLoaderData, useLocation, useNavigate, useNavigation } from "react-router";
 import { EmbeddedNavLink } from "../embedded-nav-link";
 import { SeoHomeButton } from "../HomeButton";
 import { productPathSegmentFromGid } from "../shopify-ids";
@@ -981,6 +981,7 @@ export default function ManagePage() {
   const loaderData = useLoaderData<typeof loader>();
   const location = useLocation();
   const navigate = useNavigate();
+  const navigation = useNavigation();
   const fetcher = useFetcher<typeof action>();
   const manageSearchFetcher = useFetcher<typeof loader>();
 
@@ -991,11 +992,19 @@ export default function ManagePage() {
 
   const debouncedInput = useDebouncedValue(inputValue, 320);
 
+  const catalogSearchKey = useMemo(() => {
+    const p = new URLSearchParams(
+      location.search.startsWith("?") ? location.search.slice(1) : location.search,
+    );
+    p.delete("variant");
+    return p.toString();
+  }, [location.search]);
+
   useEffect(() => {
     if (loaderData.error) return;
     manageSearchFetcher.load(managePathWithQ(location.search, debouncedInput));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedInput, location.search, loaderData.error]);
+  }, [debouncedInput, catalogSearchKey, loaderData.error]);
 
   const searchingLive =
     !loaderData.error &&
@@ -1023,9 +1032,13 @@ export default function ManagePage() {
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const createImagesRef = useRef<HTMLInputElement>(null);
   const [createImageCount, setCreateImageCount] = useState(0);
+  const pendingStockScrollRef = useRef(false);
 
   const syncVariantInUrl = (vid: string) => {
-    navigate(managePathWithParams(location.search, { variant: vid || null }));
+    navigate(managePathWithParams(location.search, { variant: vid || null }), {
+      replace: true,
+      preventScrollReset: true,
+    });
   };
 
   useEffect(() => {
@@ -1039,6 +1052,17 @@ export default function ManagePage() {
       }
     }
   }, [variantParam, products]);
+
+  useEffect(() => {
+    if (!pendingStockScrollRef.current) return;
+    if (navigation.state !== "idle") return;
+    pendingStockScrollRef.current = false;
+    requestAnimationFrame(() => {
+      document
+        .getElementById("set-quantity-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [navigation.state, variantId]);
 
   useEffect(() => {
     if (searchingLive) return;
@@ -1065,12 +1089,8 @@ export default function ManagePage() {
   const selectForStock = (pid: string, vid: string) => {
     setProductId(pid);
     setVariantId(vid);
+    pendingStockScrollRef.current = true;
     syncVariantInUrl(vid);
-    requestAnimationFrame(() => {
-      document
-        .getElementById("set-quantity-section")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   };
 
   const selectProductForStock = (pid: string, preferredVariantId?: string) => {
@@ -1082,12 +1102,8 @@ export default function ManagePage() {
       "";
     setProductId(pid);
     setVariantId(vid);
+    pendingStockScrollRef.current = true;
     syncVariantInUrl(vid);
-    requestAnimationFrame(() => {
-      document
-        .getElementById("set-quantity-section")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   };
 
   const selectedProduct = useMemo(
