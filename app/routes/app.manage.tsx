@@ -920,6 +920,32 @@ export default function ManagePage() {
     navigate(managePathWithQ(location.search, inputValue));
   };
 
+  const selectForStock = (pid: string, vid: string) => {
+    setProductId(pid);
+    setVariantId(vid);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("set-quantity-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const selectProductForStock = (pid: string, preferredVariantId?: string) => {
+    const product = products.find((p) => p.id === pid);
+    const vid =
+      preferredVariantId ??
+      product?.variants.find((v) => v.inventoryItemId)?.id ??
+      product?.variants[0]?.id ??
+      "";
+    setProductId(pid);
+    setVariantId(vid);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("set-quantity-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === productId),
     [products, productId],
@@ -1120,10 +1146,27 @@ export default function ManagePage() {
                       </td>
                     </tr>
                   ) : (
-                    inventoryRows.map((row) => (
+                    inventoryRows.map((row) => {
+                      const isSelected =
+                        productId === row.productId &&
+                        variantId === row.variantId;
+                      return (
                       <tr
                         key={row.key}
-                        style={{ borderBottom: "1px solid #e3e5e7" }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => selectForStock(row.productId, row.variantId)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            selectForStock(row.productId, row.variantId);
+                          }
+                        }}
+                        style={{
+                          borderBottom: "1px solid #e3e5e7",
+                          cursor: "pointer",
+                          background: isSelected ? "#eef2ff" : undefined,
+                        }}
                       >
                         <td style={{ padding: "0.45rem 0.5rem", verticalAlign: "middle" }}>
                           <div
@@ -1157,12 +1200,15 @@ export default function ManagePage() {
                             )}
                             <div>
                               <div style={{ fontWeight: 600 }}>{row.productTitle}</div>
-                              <EmbeddedNavLink
-                                hrefPathname={`/app/products/${productPathSegmentFromGid(row.productId)}`}
-                                style={{ fontSize: "0.75rem" }}
-                              >
-                                Open
-                              </EmbeddedNavLink>
+                              {isSelected ? (
+                                <span style={{ fontSize: "0.75rem", color: "#4338ca", fontWeight: 600 }}>
+                                  Selected for stock update
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: "0.75rem", color: "#6d7175" }}>
+                                  Click to set stock
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1200,7 +1246,8 @@ export default function ManagePage() {
                           </td>
                         ))}
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1328,12 +1375,13 @@ export default function ManagePage() {
           </s-stack>
         </s-section>
 
+        <div id="set-quantity-section">
         <s-section heading="Set available quantity">
           <s-stack direction="block" gap="base">
             <s-text tone="neutral">
               Update <strong>one variant</strong> at a time. Saving sets that
-              quantity at <strong>all</strong> active locations. Select a product
-              from the inventory table filter results below (same list as above).
+              quantity at <strong>all</strong> active locations. Click a row in
+              the inventory table above to select product and variant.
             </s-text>
 
             <div
@@ -1567,6 +1615,7 @@ export default function ManagePage() {
             ) : null}
           </s-stack>
         </s-section>
+        </div>
 
         <s-section heading="Create new product">
           <s-stack direction="block" gap="base">
@@ -1736,10 +1785,26 @@ export default function ManagePage() {
                 {fetcher.data.imagesUploaded > 0
                   ? ` Attached ${fetcher.data.imagesUploaded} image(s).`
                   : ""}{" "}
+                <button
+                  type="button"
+                  onClick={() => selectProductForStock(fetcher.data.productId)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    color: "#4f46e5",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  Set stock here
+                </button>
+                {" · "}
                 <EmbeddedNavLink
                   hrefPathname={`/app/products/${productPathSegmentFromGid(fetcher.data.productId)}`}
                 >
-                  Open in this app
+                  Optimize SEO
                 </EmbeddedNavLink>
               </s-text>
             ) : null}
@@ -1758,11 +1823,21 @@ export default function ManagePage() {
             fetcher.data.intent === "create_product" ? (
               <s-text tone="caution">
                 {fetcher.data.message}{" "}
-                <EmbeddedNavLink
-                  hrefPathname={`/app/products/${productPathSegmentFromGid(fetcher.data.productId)}`}
+                <button
+                  type="button"
+                  onClick={() => selectProductForStock(fetcher.data.productId)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    color: "#4f46e5",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                  }}
                 >
-                  Open product to set stock
-                </EmbeddedNavLink>
+                  Set stock here
+                </button>
               </s-text>
             ) : null}
             {fetcher.data?.status === "product_created_images_failed" &&
