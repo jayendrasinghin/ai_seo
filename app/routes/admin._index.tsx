@@ -57,7 +57,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopFilterRaw === "merchant" ||
     shopFilterRaw === "development" ||
     shopFilterRaw === "staff" ||
-    shopFilterRaw === "uninstalled"
+    shopFilterRaw === "uninstalled" ||
+    shopFilterRaw === "installed"
       ? shopFilterRaw
       : "all";
   const q = (url.searchParams.get("q") || "").trim();
@@ -373,15 +374,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
 
     installedShops =
-      shopFilter === "merchant"
-        ? mapped.filter((s) => s.installed && s.kind === "merchant")
-        : shopFilter === "development"
-          ? mapped.filter((s) => s.installed && s.kind === "development")
-          : shopFilter === "staff"
-            ? mapped.filter((s) => s.installed && s.kind === "shopify_staff")
-            : shopFilter === "uninstalled"
-              ? mapped.filter((s) => !s.installed)
-              : mapped;
+      shopFilter === "installed"
+        ? mapped.filter((s) => s.installed)
+        : shopFilter === "merchant"
+          ? mapped.filter((s) => s.installed && s.kind === "merchant")
+          : shopFilter === "development"
+            ? mapped.filter((s) => s.installed && s.kind === "development")
+            : shopFilter === "staff"
+              ? mapped.filter((s) => s.installed && s.kind === "shopify_staff")
+              : shopFilter === "uninstalled"
+                ? mapped.filter((s) => !s.installed)
+                : mapped;
   }
 
   return {
@@ -537,6 +540,19 @@ const styles = `
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: .9rem 1rem;
+  }
+  a.stat {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  a.stat:hover { border-color: #99f6e4; box-shadow: 0 0 0 3px rgba(13,148,136,.12); }
+  a.stat.active {
+    border-color: #0d9488;
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 3px rgba(13,148,136,.18);
   }
   .stat .label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
   .stat .value { font-size: 1.6rem; font-weight: 750; margin-top: .2rem; }
@@ -769,6 +785,15 @@ function shopKindLabel(kind: ShopKind) {
   return "Shopify staff";
 }
 
+function shopFilterHeading(filter: string) {
+  if (filter === "installed") return "Currently installed stores";
+  if (filter === "merchant") return "Real merchant stores";
+  if (filter === "development") return "Development / Partner stores";
+  if (filter === "staff") return "Shopify staff / reviewer stores";
+  if (filter === "uninstalled") return "Uninstalled stores";
+  return "All stores";
+}
+
 export default function AdminIndexPage() {
   const {
     section,
@@ -930,84 +955,73 @@ export default function AdminIndexPage() {
           {section === "shops" ? (
             <>
               <div className="stats shop-stats" style={{ marginBottom: "1rem" }}>
-                <div className="stat">
+                <Link
+                  className={`stat ${shopFilter === "installed" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "installed" })}
+                >
                   <div className="label">Currently installed</div>
                   <div className="value">{launchStats.currentlyInstalled}</div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    Active OAuth sessions
+                    Click to list active sessions
                   </p>
-                </div>
-                <div className="stat">
+                </Link>
+                <Link
+                  className={`stat ${shopFilter === "merchant" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "merchant" })}
+                >
                   <div className="label">Real stores</div>
                   <div className="value">{launchStats.merchants}</div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    Paid Shopify plans (launch count)
+                    Click to list paid Shopify plans
                   </p>
-                </div>
-                <div className="stat">
+                </Link>
+                <Link
+                  className={`stat ${shopFilter === "development" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "development" })}
+                >
                   <div className="label">Development / Partner</div>
                   <div className="value">{launchStats.development}</div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    Test stores — not launch pricing
+                    Click to list test stores
                   </p>
-                </div>
-                <div className="stat">
+                </Link>
+                <Link
+                  className={`stat ${shopFilter === "staff" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "staff" })}
+                >
                   <div className="label">Shopify staff</div>
                   <div className="value">{launchStats.staff}</div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    Reviewer / synthetic checkers
+                    Click to list reviewer stores
                   </p>
-                </div>
-                <div className="stat">
+                </Link>
+                <Link
+                  className={`stat ${shopFilter === "uninstalled" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "uninstalled" })}
+                >
                   <div className="label">Uninstalled</div>
                   <div className="value">{launchStats.uninstalled}</div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    Seen before, no live session
+                    Click to list removed installs
                   </p>
-                </div>
-                <div className="stat">
+                </Link>
+                <Link
+                  className={`stat ${shopFilter === "merchant" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "merchant" })}
+                >
                   <div className="label">Launch installs</div>
                   <div className="value">
                     {launchStats.installed} / {launchStats.target}
                   </div>
                   <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                    {launchStats.remaining} real merchant stores remaining
+                    Click to list real stores counted in {launchStats.target}
                   </p>
-                </div>
+                </Link>
               </div>
 
-              <div className="toolbar">
-                <Link
-                  className={`chip ${shopFilter === "all" ? "active" : ""}`}
-                  to={hrefFor({ section: "shops", shopFilter: "all" })}
-                >
-                  All
-                </Link>
-                <Link
-                  className={`chip ${shopFilter === "merchant" ? "active" : ""}`}
-                  to={hrefFor({ section: "shops", shopFilter: "merchant" })}
-                >
-                  Real stores
-                </Link>
-                <Link
-                  className={`chip ${shopFilter === "development" ? "active" : ""}`}
-                  to={hrefFor({ section: "shops", shopFilter: "development" })}
-                >
-                  Development
-                </Link>
-                <Link
-                  className={`chip ${shopFilter === "staff" ? "active" : ""}`}
-                  to={hrefFor({ section: "shops", shopFilter: "staff" })}
-                >
-                  Shopify staff
-                </Link>
-                <Link
-                  className={`chip ${shopFilter === "uninstalled" ? "active" : ""}`}
-                  to={hrefFor({ section: "shops", shopFilter: "uninstalled" })}
-                >
-                  Uninstalled
-                </Link>
-              </div>
+              <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>
+                {shopFilterHeading(shopFilter)} ({installedShops.length})
+              </h2>
 
               {installedShops.length === 0 ? (
                 <p className="empty">No shops match this filter.</p>
