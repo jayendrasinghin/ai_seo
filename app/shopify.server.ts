@@ -54,6 +54,19 @@ const shopify = shopifyApp({
           "Store profile sync after auth failed",
         );
       }
+
+      try {
+        const { shopRepository } = await import("./repositories");
+        await shopRepository.upsertByDomain(session.shop);
+      } catch (error) {
+        logger.warn(
+          {
+            shop: session.shop,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Shop install record upsert after auth failed",
+        );
+      }
     },
   },
   future: {

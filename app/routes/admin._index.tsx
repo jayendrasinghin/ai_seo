@@ -19,8 +19,9 @@ import {
 import prisma from "../db.server";
 import { LAUNCH_STORE_TARGET } from "../pricing";
 import {
-  isShopifyStaffOrSyntheticShop,
+  classifyShopKind,
   syncStoreProfile,
+  type ShopKind,
 } from "../store-profile.server";
 
 const MAX_REPLY = 5000;
@@ -51,6 +52,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const appSlug = url.searchParams.get("app") || "all";
   const statusFilter = url.searchParams.get("status") || "all";
   const section = url.searchParams.get("section") === "shops" ? "shops" : "support";
+  const shopFilterRaw = url.searchParams.get("shopFilter") || "all";
+  const shopFilter =
+    shopFilterRaw === "merchant" ||
+    shopFilterRaw === "development" ||
+    shopFilterRaw === "staff" ||
+    shopFilterRaw === "uninstalled"
+      ? shopFilterRaw
+      : "all";
   const q = (url.searchParams.get("q") || "").trim();
 
   const apps = await prisma.supportApp.findMany({
@@ -152,12 +161,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     timezone: string | null;
     currency: string | null;
     planDisplayName: string | null;
+    partnerDevelopment: boolean | null;
+    kind: ShopKind;
     isShopifyTest: boolean;
+    installed: boolean;
     profileSynced: boolean;
   }> = [];
 
   let launchStats = {
     installed: 0,
+    currentlyInstalled: 0,
+    merchants: 0,
+    development: 0,
+    staff: 0,
+    uninstalled: 0,
     target: LAUNCH_STORE_TARGET,
     remaining: LAUNCH_STORE_TARGET,
   };
@@ -204,24 +221,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
     });
     const usageByShop = new Map(usageRows.map((u) => [u.shop, u]));
-    let savedByShop = new Map<
-      string,
-      {
-        storeName: string | null;
-        primaryDomain: string | null;
-        storefrontUrl: string | null;
-        contactEmail: string | null;
-        phone: string | null;
-        address: string | null;
-        country: string | null;
-        timezone: string | null;
-        currency: string | null;
-        planDisplayName: string | null;
-      }
-    >();
+    let paySyncShops: Array<{
+      shopDomain: string;
+      installedAt: Date;
+      uninstalledAt: Date | null;
+    }> = [];
+    try {
+      paySyncShops = await prisma.shop.findMany({
+        select: { shopDomain: true, installedAt: true, uninstalledAt: true },
+      });
+    } catch (error) {
+      console.error("[admin] Shop table missing?", error);
+    }
+
+    const shopIds = new Set<string>([
+      ...installedShopRows.map((r) => r.shop),
+      ...usageRows.map((u) => u.shop),
+      ...paySyncShops.map((s) => s.shopDomain),
+    ]);
+
+    type SavedProfile = {
+      storeName: string | null;
+      primaryDomain: string | null;
+      storefrontUrl: string | null;
+      contactEmail: string | null;
+      phone: string | null;
+      address: string | null;
+      country: string | null;
+      timezone: string | null;
+      currency: string | null;
+      planDisplayName: string | null;
+      partnerDevelopment: boolean | null;
+    };
+    let savedByShop = new Map<string, SavedProfile>();
     try {
       const savedProfiles = await prisma.storeProfile.findMany({
-        where: { shop: { in: installedShopRows.map((r) => r.shop) } },
+        where: { shop: { in: [...shopIds] } },
       });
       savedByShop = new Map(
         savedProfiles.map((p) => [
@@ -237,6 +272,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             timezone: p.timezone,
             currency: p.currency,
             planDisplayName: p.planDisplayName,
+            partnerDevelopment: p.partnerDevelopment,
           },
         ]),
       );
@@ -256,65 +292,103 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ),
     );
 
-    installedShops = installedShopRows
-      .map((row) => {
-        const usage = usageByShop.get(row.shop);
-        const live = liveProfiles.get(row.shop) ?? null;
-        const saved = savedByShop.get(row.shop) ?? null;
-        const profile = live ?? saved ?? null;
-        const contactEmail = profile?.contactEmail ?? null;
-        const planDisplayName = profile?.planDisplayName ?? null;
-        const isShopifyTest = isShopifyStaffOrSyntheticShop({
-          shop: row.shop,
-          contactEmail,
-          planDisplayName,
-        });
-        return {
-          shop: row.shop,
-          plan: usage?.plan ?? "free",
-          aiSeoUsed: usage?.aiSeoUsed ?? 0,
-          aiImageUsed: usage?.aiImageUsed ?? 0,
-          firstSeenAt: usage?.createdAt ?? null,
-          lastActivityAt: usage?.updatedAt ?? null,
-          storeName: profile?.storeName ?? null,
-          primaryDomain: profile?.primaryDomain ?? row.shop,
-          storefrontUrl:
-            profile?.storefrontUrl ||
-            (profile?.primaryDomain
-              ? `https://${profile.primaryDomain}`
-              : `https://${row.shop}`),
-          contactEmail,
-          phone: profile?.phone ?? null,
-          address: profile?.address ?? null,
-          country: profile?.country ?? null,
-          timezone: profile?.timezone ?? null,
-          currency: profile?.currency ?? null,
-          planDisplayName,
-          isShopifyTest,
-          profileSynced: Boolean(profile?.storeName || profile?.contactEmail || profile?.planDisplayName),
-        };
-      })
-      .sort((a, b) => {
-        // Real merchants first, then Shopify test shops
-        if (a.isShopifyTest !== b.isShopifyTest) return a.isShopifyTest ? 1 : -1;
-        const aTime = new Date(a.lastActivityAt ?? a.firstSeenAt ?? 0).getTime();
-        const bTime = new Date(b.lastActivityAt ?? b.firstSeenAt ?? 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return a.shop.localeCompare(b.shop);
-      });
+    const paySyncByShop = new Map(paySyncShops.map((s) => [s.shopDomain, s]));
 
-    const merchantCount = installedShops.filter((s) => !s.isShopifyTest).length;
+    const mapped = [...shopIds].map((shopDomain) => {
+      const session = sessionsByShop.get(shopDomain);
+      const usage = usageByShop.get(shopDomain);
+      const paySync = paySyncByShop.get(shopDomain);
+      const live = liveProfiles.get(shopDomain) ?? null;
+      const saved = savedByShop.get(shopDomain) ?? null;
+      const profile = live ?? saved ?? null;
+      const contactEmail = profile?.contactEmail ?? null;
+      const planDisplayName = profile?.planDisplayName ?? null;
+      const partnerDevelopment = profile?.partnerDevelopment ?? null;
+      const kind = classifyShopKind({
+        shop: shopDomain,
+        contactEmail,
+        planDisplayName,
+        partnerDevelopment,
+      });
+      const installed = Boolean(session);
+      return {
+        shop: shopDomain,
+        plan: usage?.plan ?? "free",
+        aiSeoUsed: usage?.aiSeoUsed ?? 0,
+        aiImageUsed: usage?.aiImageUsed ?? 0,
+        firstSeenAt: usage?.createdAt ?? paySync?.installedAt ?? null,
+        lastActivityAt: usage?.updatedAt ?? paySync?.uninstalledAt ?? paySync?.installedAt ?? null,
+        storeName: profile?.storeName ?? null,
+        primaryDomain: profile?.primaryDomain ?? shopDomain,
+        storefrontUrl:
+          profile?.storefrontUrl ||
+          (profile?.primaryDomain
+            ? `https://${profile.primaryDomain}`
+            : `https://${shopDomain}`),
+        contactEmail,
+        phone: profile?.phone ?? null,
+        address: profile?.address ?? null,
+        country: profile?.country ?? null,
+        timezone: profile?.timezone ?? null,
+        currency: profile?.currency ?? null,
+        planDisplayName,
+        partnerDevelopment,
+        kind,
+        isShopifyTest: kind !== "merchant",
+        installed,
+        profileSynced: Boolean(
+          profile?.storeName || profile?.contactEmail || profile?.planDisplayName,
+        ),
+      };
+    });
+
+    mapped.sort((a, b) => {
+      if (a.installed !== b.installed) return a.installed ? -1 : 1;
+      const kindRank = (k: ShopKind) =>
+        k === "merchant" ? 0 : k === "development" ? 1 : 2;
+      if (kindRank(a.kind) !== kindRank(b.kind)) {
+        return kindRank(a.kind) - kindRank(b.kind);
+      }
+      const aTime = new Date(a.lastActivityAt ?? a.firstSeenAt ?? 0).getTime();
+      const bTime = new Date(b.lastActivityAt ?? b.firstSeenAt ?? 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      return a.shop.localeCompare(b.shop);
+    });
+
+    const currentlyInstalled = mapped.filter((s) => s.installed);
+    const merchants = currentlyInstalled.filter((s) => s.kind === "merchant").length;
+    const development = currentlyInstalled.filter((s) => s.kind === "development").length;
+    const staff = currentlyInstalled.filter((s) => s.kind === "shopify_staff").length;
+    const uninstalled = mapped.filter((s) => !s.installed).length;
+
     launchStats = {
-      installed: merchantCount,
+      installed: merchants,
+      currentlyInstalled: currentlyInstalled.length,
+      merchants,
+      development,
+      staff,
+      uninstalled,
       target: LAUNCH_STORE_TARGET,
-      remaining: Math.max(0, LAUNCH_STORE_TARGET - merchantCount),
+      remaining: Math.max(0, LAUNCH_STORE_TARGET - merchants),
     };
+
+    installedShops =
+      shopFilter === "merchant"
+        ? mapped.filter((s) => s.installed && s.kind === "merchant")
+        : shopFilter === "development"
+          ? mapped.filter((s) => s.installed && s.kind === "development")
+          : shopFilter === "staff"
+            ? mapped.filter((s) => s.installed && s.kind === "shopify_staff")
+            : shopFilter === "uninstalled"
+              ? mapped.filter((s) => !s.installed)
+              : mapped;
   }
 
   return {
     section,
     appSlug,
     statusFilter,
+    shopFilter,
     q,
     apps: appStats,
     selectedApp,
@@ -455,7 +529,9 @@ const styles = `
     gap: .75rem;
     margin: 1rem 0;
   }
-  @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } }
+  .stats.shop-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .stats.shop-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .stats, .stats.shop-stats { grid-template-columns: 1fr; } }
   .stat {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -513,6 +589,11 @@ const styles = `
   .pill.open { background: #ffedd5; color: var(--warn); }
   .pill.replied { background: #d1fae5; color: var(--ok); }
   .pill.closed { background: #e2e8f0; color: #475569; }
+  .pill.merchant { background: #d1fae5; color: #047857; }
+  .pill.development { background: #dbeafe; color: #1d4ed8; }
+  .pill.staff { background: #fef3c7; color: #b45309; }
+  .pill.uninstalled { background: #e2e8f0; color: #475569; }
+  .pill.pending { background: #ffedd5; color: #c2410c; }
   .app-tag {
     display: inline-block;
     font-size: .75rem;
@@ -669,15 +750,23 @@ function hrefFor(opts: {
   section?: string;
   app?: string;
   status?: string;
+  shopFilter?: string;
   q?: string;
 }) {
   const p = new URLSearchParams();
   if (opts.section && opts.section !== "support") p.set("section", opts.section);
   if (opts.app && opts.app !== "all") p.set("app", opts.app);
   if (opts.status && opts.status !== "all") p.set("status", opts.status);
+  if (opts.shopFilter && opts.shopFilter !== "all") p.set("shopFilter", opts.shopFilter);
   if (opts.q) p.set("q", opts.q);
   const s = p.toString();
   return s ? `/admin?${s}` : "/admin";
+}
+
+function shopKindLabel(kind: ShopKind) {
+  if (kind === "merchant") return "Real store";
+  if (kind === "development") return "Development / Partner";
+  return "Shopify staff";
 }
 
 export default function AdminIndexPage() {
@@ -692,6 +781,7 @@ export default function AdminIndexPage() {
     messages,
     installedShops,
     launchStats,
+    shopFilter,
   } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
@@ -761,7 +851,7 @@ export default function AdminIndexPage() {
               </h1>
               <p className="muted">
                 {section === "shops"
-                  ? "Shops with an active session for Product Image SEO Optimizer."
+                  ? "Live sessions vs uninstalled shops. Real merchant stores count toward launch pricing; development and Shopify staff stores are labeled separately."
                   : selectedApp?.description ||
                     "Tickets across your registered Shopify apps."}
               </p>
@@ -838,33 +928,107 @@ export default function AdminIndexPage() {
           ) : null}
 
           {section === "shops" ? (
-            installedShops.length === 0 ? (
-              <p className="empty">No installed shops found yet.</p>
-            ) : (
-              <>
-                <div className="stats" style={{ marginBottom: "1rem" }}>
-                  <div className="stat">
-                    <div className="label">Launch installs</div>
-                    <div className="value">
-                      {launchStats.installed} / {launchStats.target}
-                    </div>
-                    <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                      {launchStats.remaining} merchant stores remaining at launch
-                      pricing (Shopify test stores excluded)
-                    </p>
-                  </div>
+            <>
+              <div className="stats shop-stats" style={{ marginBottom: "1rem" }}>
+                <div className="stat">
+                  <div className="label">Currently installed</div>
+                  <div className="value">{launchStats.currentlyInstalled}</div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    Active OAuth sessions
+                  </p>
                 </div>
+                <div className="stat">
+                  <div className="label">Real stores</div>
+                  <div className="value">{launchStats.merchants}</div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    Paid Shopify plans (launch count)
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="label">Development / Partner</div>
+                  <div className="value">{launchStats.development}</div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    Test stores — not launch pricing
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="label">Shopify staff</div>
+                  <div className="value">{launchStats.staff}</div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    Reviewer / synthetic checkers
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="label">Uninstalled</div>
+                  <div className="value">{launchStats.uninstalled}</div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    Seen before, no live session
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="label">Launch installs</div>
+                  <div className="value">
+                    {launchStats.installed} / {launchStats.target}
+                  </div>
+                  <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                    {launchStats.remaining} real merchant stores remaining
+                  </p>
+                </div>
+              </div>
+
+              <div className="toolbar">
+                <Link
+                  className={`chip ${shopFilter === "all" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "all" })}
+                >
+                  All
+                </Link>
+                <Link
+                  className={`chip ${shopFilter === "merchant" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "merchant" })}
+                >
+                  Real stores
+                </Link>
+                <Link
+                  className={`chip ${shopFilter === "development" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "development" })}
+                >
+                  Development
+                </Link>
+                <Link
+                  className={`chip ${shopFilter === "staff" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "staff" })}
+                >
+                  Shopify staff
+                </Link>
+                <Link
+                  className={`chip ${shopFilter === "uninstalled" ? "active" : ""}`}
+                  to={hrefFor({ section: "shops", shopFilter: "uninstalled" })}
+                >
+                  Uninstalled
+                </Link>
+              </div>
+
+              {installedShops.length === 0 ? (
+                <p className="empty">No shops match this filter.</p>
+              ) : (
                 <div className="card-grid">
                   {installedShops.map((s) => (
                     <div key={s.shop} className="card">
                       <div className="shop">
                         {s.storeName || s.shop}
-                        {s.isShopifyTest ? (
+                        <span
+                          className={`pill ${s.kind === "shopify_staff" ? "staff" : s.kind}`}
+                          style={{ marginLeft: 8, fontSize: 11 }}
+                        >
+                          {shopKindLabel(s.kind)}
+                        </span>
+                        {!s.installed ? (
                           <span
-                            className="pill pending"
+                            className="pill uninstalled"
                             style={{ marginLeft: 8, fontSize: 11 }}
                           >
-                            Shopify test
+                            Uninstalled
                           </span>
                         ) : null}
                       </div>
@@ -890,6 +1054,7 @@ export default function AdminIndexPage() {
                         Shopify plan: {s.planDisplayName || "—"}
                         {" · "}
                         App plan: {s.plan}
+                        {s.partnerDevelopment ? " · Partner development flag" : ""}
                       </p>
                       <p className="meta">
                         AI SEO used: {s.aiSeoUsed} · AI image used: {s.aiImageUsed}
@@ -905,7 +1070,7 @@ export default function AdminIndexPage() {
                         {s.currency ? ` · ${s.currency}` : ""}
                       </p>
                       {s.address ? <p className="meta">Address: {s.address}</p> : null}
-                      {!s.profileSynced ? (
+                      {!s.profileSynced && s.installed ? (
                         <p className="meta" style={{ color: "#b45309" }}>
                           Profile not synced yet — merchant may need to reopen the app
                           once so we can refresh the access token.
@@ -919,8 +1084,8 @@ export default function AdminIndexPage() {
                     </div>
                   ))}
                 </div>
-              </>
-            )
+              )}
+            </>
           ) : null}
         </main>
       </div>

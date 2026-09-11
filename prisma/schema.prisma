@@ -61,6 +61,8 @@ model StoreProfile {
   timezone         String?
   currency         String?
   planDisplayName  String?
+  /// Shopify shop.plan.partnerDevelopment — Partner test stores.
+  partnerDevelopment Boolean?
   syncedAt         DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

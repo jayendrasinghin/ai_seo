@@ -13,6 +13,7 @@ export type StoreProfileData = {
   timezone: string | null;
   currency: string | null;
   planDisplayName: string | null;
+  partnerDevelopment: boolean | null;
 };
 
 type SessionTokenRow = {
@@ -98,7 +99,10 @@ async function fetchShopProfileGraphQL(
             zip?: string | null;
             phone?: string | null;
           } | null;
-          plan?: { displayName?: string | null } | null;
+          plan?: {
+            displayName?: string | null;
+            partnerDevelopment?: boolean | null;
+          } | null;
         };
       };
       errors?: Array<{ message?: string }>;
@@ -142,6 +146,7 @@ async function fetchShopProfileGraphQL(
         timezone: s.ianaTimezone ?? null,
         currency: s.currencyCode ?? null,
         planDisplayName: s.plan?.displayName ?? null,
+        partnerDevelopment: Boolean(s.plan?.partnerDevelopment),
       },
     };
   } catch (error) {
@@ -165,6 +170,7 @@ async function saveStoreProfile(shop: string, live: StoreProfileData): Promise<v
       timezone: live.timezone,
       currency: live.currency,
       planDisplayName: live.planDisplayName,
+      partnerDevelopment: live.partnerDevelopment,
       syncedAt: new Date(),
     },
     update: {
@@ -178,6 +184,7 @@ async function saveStoreProfile(shop: string, live: StoreProfileData): Promise<v
       timezone: live.timezone,
       currency: live.currency,
       planDisplayName: live.planDisplayName,
+      partnerDevelopment: live.partnerDevelopment,
       syncedAt: new Date(),
     },
   });
@@ -281,6 +288,8 @@ export async function syncStoreProfileFromAuthSession(session: {
   });
 }
 
+export type ShopKind = "merchant" | "development" | "shopify_staff";
+
 /** Shopify Partner / automated checker stores — not real merchants. */
 export function isShopifyStaffOrSyntheticShop(input: {
   shop: string;
@@ -305,4 +314,28 @@ export function isShopifyStaffOrSyntheticShop(input: {
   if (/^number-\d+-\d+\.myshopify\.com$/i.test(input.shop)) return true;
 
   return false;
+}
+
+function planLooksLikeDevelopment(planDisplayName?: string | null): boolean {
+  const plan = (planDisplayName || "").toLowerCase();
+  if (!plan) return false;
+  return (
+    plan.includes("development") ||
+    plan.includes("partner sandbox") ||
+    plan.includes("plus partner") ||
+    plan.includes("app development")
+  );
+}
+
+/** Classify a shop for admin monitoring (merchant vs Partner test vs Shopify staff). */
+export function classifyShopKind(input: {
+  shop: string;
+  contactEmail?: string | null;
+  planDisplayName?: string | null;
+  partnerDevelopment?: boolean | null;
+}): ShopKind {
+  if (isShopifyStaffOrSyntheticShop(input)) return "shopify_staff";
+  if (input.partnerDevelopment) return "development";
+  if (planLooksLikeDevelopment(input.planDisplayName)) return "development";
+  return "merchant";
 }
