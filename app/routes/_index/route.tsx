@@ -1,125 +1,106 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { redirect, Form, useLoaderData } from "react-router";
+import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { useLoaderData } from "react-router";
+import { MarketingShell } from "../../marketing/MarketingShell";
+import {
+  loadMarketingInstall,
+  marketingMeta,
+} from "../../marketing/shopify-public";
 
-import { login } from "../../shopify.server";
-import { readLastShop } from "../../last-shop.server";
-import { paysyncEnabled } from "../../paysync-feature.server";
+export const meta: MetaFunction = () =>
+  marketingMeta({
+    title: "SEOi — Shopify AI SEO and PayPal tracking sync",
+    description:
+      "One Shopify app for AI product SEO, image ALT text, and PaySync — send fulfillment tracking to PayPal. Install once, use both workspaces.",
+    path: "/",
+  });
 
-import styles from "./styles.module.css";
+export const loader = async ({ request }: LoaderFunctionArgs) =>
+  loadMarketingInstall(request);
 
-function shopFromHost(host: string | null): string | null {
-  if (!host) return null;
-  try {
-    const decoded = atob(host.replace(/-/g, "+").replace(/_/g, "/"));
-    const match = decoded.match(/\/store\/([^/?#]+)/);
-    if (!match?.[1]) return null;
-    const handle = match[1];
-    return handle.includes(".") ? handle : `${handle}.myshopify.com`;
-  } catch {
-    return null;
-  }
-}
+export default function Home() {
+  const { showForm, lastShop, showPaySync, appStoreUrl, origin } =
+    useLoaderData<typeof loader>();
 
-function shopFromReferrer(referrer: string | null): string | null {
-  if (!referrer) return null;
-  try {
-    const ref = new URL(referrer);
-    if (!ref.hostname.endsWith("shopify.com")) return null;
-    const match = ref.pathname.match(/\/store\/([^/?#]+)/);
-    if (!match?.[1]) return null;
-    const handle = match[1];
-    return handle.includes(".") ? handle : `${handle}.myshopify.com`;
-  } catch {
-    return null;
-  }
-}
-
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
-  const shopParam = url.searchParams.get("shop");
-  const host = url.searchParams.get("host");
-  const fromAdmin =
-    Boolean(host) ||
-    url.searchParams.get("id_token") != null ||
-    url.searchParams.get("embedded") === "1" ||
-    Boolean(shopFromReferrer(request.headers.get("referer")));
-
-  const shopFromShopify =
-    shopParam ||
-    shopFromHost(host) ||
-    shopFromReferrer(request.headers.get("referer"));
-
-  // Only bounce into /app when Shopify Admin context is present.
-  // Never use the remember-shop cookie alone — /app outside Admin returns 410
-  // and can loop with /auth/login.
-  if (fromAdmin || shopFromShopify) {
-    if (shopFromShopify && !url.searchParams.get("shop")) {
-      url.searchParams.set("shop", shopFromShopify);
-    }
-    throw redirect(`/app?${url.searchParams.toString()}`);
-  }
-
-  const lastShop = await readLastShop(request);
-  const showPaySync = paysyncEnabled();
-
-  return {
-    showForm: Boolean(login),
-    lastShop: lastShop ?? "",
-    showPaySync,
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "SEOi",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Shopify",
+    url: origin,
+    description:
+      "Shopify app for AI product SEO, image ALT text, and PayPal fulfillment tracking sync.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+    },
   };
-};
-
-export default function App() {
-  const { showForm, lastShop, showPaySync } = useLoaderData<typeof loader>();
 
   return (
-    <div className={styles.index}>
-      <div className={styles.content}>
-        <h1 className={styles.heading}>
-          {showPaySync ? "SEOi — AI SEO & PaySync" : "SEOi — AI SEO & Image Optimization"}
-        </h1>
-        <p className={styles.text}>
-          {showPaySync
-            ? "AI SEO, image optimization, and PayPal / Razorpay tracking sync for Shopify."
-            : "AI SEO and image optimization for Shopify product listings."}
+    <MarketingShell
+      path="/"
+      showForm={showForm}
+      lastShop={lastShop}
+      appStoreUrl={appStoreUrl}
+    >
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <header className="mkt-hero">
+        <p className="mkt-kicker">Shopify app</p>
+        <h1>AI product SEO and PayPal tracking — one app, one install</h1>
+        <p className="mkt-lead">
+          SEOi is a single Shopify app with two workspaces: product SEO and ALT
+          text, and PaySync for PayPal fulfillment tracking. Pick the problem
+          you have. You still install SEOi once.
         </p>
-        {showForm && (
-          <Form className={styles.form} method="post" action="/auth/login">
-            <label className={styles.label}>
-              <span>Shop domain</span>
-              <input
-                className={styles.input}
-                type="text"
-                name="shop"
-                placeholder="your-store.myshopify.com"
-                defaultValue={lastShop}
-                autoComplete="on"
-              />
-              <span>e.g. storetest-987654354.myshopify.com</span>
-            </label>
-            <button className={styles.button} type="submit">
-              Open app
-            </button>
-          </Form>
-        )}
-        <ul className={styles.list}>
-          <li>
-            <strong>AI SEO &amp; images</strong> — product copy, alt text, and AI SEO
-            suite tools.
-          </li>
+        <div className="mkt-actions">
+          <a className="mkt-btn mkt-btn-primary" href="#install">
+            Install SEOi
+          </a>
+          <a className="mkt-btn mkt-btn-secondary" href="/shopify-seo">
+            Product SEO &amp; ALT text
+          </a>
           {showPaySync ? (
-            <li>
-              <strong>PaySync</strong> — sync PayPal / Razorpay tracking from
-              Shopify fulfillments.
-            </li>
+            <a className="mkt-btn mkt-btn-secondary" href="/shopify-paypal-tracking">
+              Sync tracking to PayPal
+            </a>
           ) : null}
-          <li>
-            <strong>Tip</strong> — open from Shopify Admin → Apps → SEOi for the
-            embedded app. Or enter your{" "}
-            <code>*.myshopify.com</code> domain below.
-          </li>
-        </ul>
+        </div>
+      </header>
+
+      <div className="mkt-grid">
+        <a className="mkt-card" href="/shopify-seo">
+          <p className="mkt-note">For product pages</p>
+          <h2>Product SEO &amp; ALT text</h2>
+          <p>
+            AI titles, descriptions, image ALT text, and SEO scans inside
+            Shopify Admin. No ranking or sales promises — it writes and updates
+            the fields you apply.
+          </p>
+        </a>
+        {showPaySync ? (
+          <a className="mkt-card" href="/shopify-paypal-tracking">
+            <p className="mkt-note">For PayPal orders</p>
+            <h2>Sync tracking to PayPal</h2>
+            <p>
+              After you fulfill in Shopify, PaySync can send the tracking number
+              to PayPal. It does not process payments.
+            </p>
+          </a>
+        ) : (
+          <div className="mkt-card">
+            <p className="mkt-note">SEO workspace</p>
+            <h2>Image ALT and product copy</h2>
+            <p>
+              Scan missing ALT text, generate suggestions, and apply them to
+              products from one dashboard.
+            </p>
+          </div>
+        )}
       </div>
-    </div>
+    </MarketingShell>
   );
 }
