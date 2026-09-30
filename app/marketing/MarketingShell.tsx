@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Form } from "react-router";
 import "./marketing.css";
 
+const GA_MEASUREMENT_ID = "G-3XM54P0DJD";
+
 export function MarketingShell({
   path,
   showForm,
@@ -17,6 +19,15 @@ export function MarketingShell({
 }) {
   return (
     <div className="mkt">
+      <script
+        async
+        src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+      />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_MEASUREMENT_ID}');`,
+        }}
+      />
       <nav className="mkt-nav">
         <a className="mkt-brand" href="/">
           SEOi
