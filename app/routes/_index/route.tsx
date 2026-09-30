@@ -1,10 +1,8 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { useLoaderData } from "react-router";
 import { MarketingShell } from "../../marketing/MarketingShell";
-import {
-  loadMarketingInstall,
-  marketingMeta,
-} from "../../marketing/shopify-public";
+import { marketingMeta } from "../../marketing/shopify-public";
+import { loadMarketingInstall } from "../../marketing/shopify-public.server";
 
 export const meta: MetaFunction = () =>
   marketingMeta({
