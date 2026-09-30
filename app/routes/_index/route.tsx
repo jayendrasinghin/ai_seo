@@ -6,9 +6,9 @@ import { loadMarketingInstall } from "../../marketing/shopify-public.server";
 
 export const meta: MetaFunction = () =>
   marketingMeta({
-    title: "SEOi — Shopify AI SEO and PayPal tracking sync",
+    title: "SEOi — AI product SEO, images, and PayPal tracking",
     description:
-      "One Shopify app for AI product SEO, image ALT text, and PaySync — send fulfillment tracking to PayPal. Install once, use both workspaces.",
+      "One Shopify app for AI product SEO, AI product images, image ALT text, and PaySync tracking to PayPal. Install once; two workspaces in Admin.",
     path: "/",
   });
 
@@ -27,7 +27,7 @@ export default function Home() {
     operatingSystem: "Shopify",
     url: origin,
     description:
-      "Shopify app for AI product SEO, image ALT text, and PayPal fulfillment tracking sync.",
+      "Shopify app for AI product SEO, AI product images, image ALT text, and PayPal fulfillment tracking sync.",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -47,19 +47,19 @@ export default function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <header className="mkt-hero">
-        <p className="mkt-kicker">Shopify app</p>
-        <h1>AI product SEO and PayPal tracking — one app, one install</h1>
+        <p className="mkt-kicker">One Shopify app · two workspaces</p>
+        <h1>AI product SEO, AI product images, and PayPal tracking</h1>
         <p className="mkt-lead">
-          SEOi is a single Shopify app with two workspaces: product SEO and ALT
-          text, and PaySync for PayPal fulfillment tracking. Pick the problem
-          you have. You still install SEOi once.
+          Install SEOi once. Use product SEO, ALT text, and AI product images in
+          one workspace; use PaySync to send Shopify fulfillment tracking to
+          PayPal in the other. Same app — not two installs.
         </p>
         <div className="mkt-actions">
           <a className="mkt-btn mkt-btn-primary" href="#install">
             Install SEOi
           </a>
           <a className="mkt-btn mkt-btn-secondary" href="/shopify-seo">
-            Product SEO &amp; ALT text
+            Product SEO &amp; AI images
           </a>
           {showPaySync ? (
             <a className="mkt-btn mkt-btn-secondary" href="/shopify-paypal-tracking">
@@ -72,11 +72,10 @@ export default function Home() {
       <div className="mkt-grid">
         <a className="mkt-card" href="/shopify-seo">
           <p className="mkt-note">For product pages</p>
-          <h2>Product SEO &amp; ALT text</h2>
+          <h2>Product SEO, ALT text &amp; AI images</h2>
           <p>
-            AI titles, descriptions, image ALT text, and SEO scans inside
-            Shopify Admin. No ranking or sales promises — it writes and updates
-            the fields you apply.
+            AI titles, descriptions, image ALT text, SEO scans, and AI product
+            image generation (Pro). You apply the content in Shopify Admin.
           </p>
         </a>
         {showPaySync ? (
